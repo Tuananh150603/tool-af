@@ -1,0 +1,30 @@
+# Token & tài khoản — KHÔNG BAO GIỜ commit
+page_tok.txt
+**/token.txt
+pages/*/token.txt
+*.pem
+*.key
+.env
+
+# Video / nhạc / dữ liệu — quá nặng, không đưa lên GitHub
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.mp3
+*.wav
+*.m4a
+*.jpg
+*.jpeg
+*.png
+*.tif
+videos/
+Upload/
+Non_edit/
+*.zip
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
