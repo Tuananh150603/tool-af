@@ -1,5 +1,7 @@
 # Token & tài khoản — KHÔNG BAO GIỜ commit
 page_tok.txt
+gui_config.json
+gui_runlog.json
 **/token.txt
 pages/*/token.txt
 *.pem
@@ -28,3 +30,12 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.venv-gui/
+
+# GUI build output (Windows)
+gui/dist/
+gui/build/
+gui/*.spec
+
+# Test cache
+.pytest_cache/

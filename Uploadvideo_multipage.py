@@ -11,6 +11,30 @@ PAGES_DIR=os.path.join(BASE,"pages")
 CAPS=["Video moi len song ca nha oi!","Sieu pham hom nay, dung bo lo nha!","Clip hay moi ngay, follow page nhe!","Video hot nhat hom nay! #xuhuong","Cay view giup ad voi!"]
 CMTS=["Hay qua moi nguoi oi","Xem di xem lai van cuon","Ai xem toi day comment so 1 nao!","Clip nay xung dang trieu view","Follow page de xem them nhe!"]
 EXTS=(".mp4",".mov",".mkv",".avi")
+# GUI doc: loi API gan nhat (de GUI phan loai checkpoint / rate-limit / token).
+# CLI goc khong doc bien nay nen hanh vi CLI khong doi.
+LAST_API_ERROR=None
+def _note_api_error(where, resp=None, payload=None, status=None):
+    """Ghi lai loi Facebook API (neu co) vao LAST_API_ERROR. Khong raise."""
+    global LAST_API_ERROR
+    try:
+        if payload is None and resp is not None:
+            try: payload = resp.json()
+            except Exception:
+                try: payload = {"error": {"message": (resp.text or "")[:300]}}
+                except Exception: payload = {}
+        if status is None and resp is not None:
+            status = getattr(resp, "status_code", None)
+        err = (payload or {}).get("error") if isinstance(payload, dict) else None
+        if err and isinstance(err, dict):
+            LAST_API_ERROR = {"where": where, "status": status,
+                              "code": err.get("code"), "subcode": err.get("error_subcode"),
+                              "message": str(err.get("message", ""))[:300]}
+    except Exception:
+        pass
+def clear_api_error():
+    global LAST_API_ERROR
+    LAST_API_ERROR = None
 def sanitize(n):
  s=re.sub(r'[\\/:*?"<>|]','',n or '').strip().replace(' ','_')
  s=re.sub(r'_+','_',s).strip('_')
@@ -55,7 +79,7 @@ def fetch_pages(user_tok):
  while url:
   try: j=requests.get(url,params=params,timeout=20).json()
   except Exception as e: print("Loi ket noi:",e); break
-  if "error" in j: print(" [!] API loi:",j); break
+  if "error" in j: print(" [!] API loi:",j); _note_api_error("fetch_pages", payload=j); break
   pages+=j.get("data",[])
   nxt=(j.get("paging") or {}).get("next"); url=nxt; params={}
   if not nxt: break
@@ -131,6 +155,7 @@ def up_simple(pid,tok,path,title,desc):
  with open(path,"rb") as f:
   r=requests.post(url,files={"source":(os.path.basename(path),f,"video/mp4")},data={"access_token":tok,"title":title,"description":desc},timeout=900)
  print(" <-",r.text[:800])
+ _note_api_error("up_simple", r)
  try: return r.json().get("id")
  except: return None
 def up_resumable(pid,tok,path,title,desc):
@@ -138,6 +163,7 @@ def up_resumable(pid,tok,path,title,desc):
  sz=os.path.getsize(path); fn=os.path.basename(path)
  j1=requests.post(f"https://graph.facebook.com/{VER}/{pid}/uploads",data={"access_token":tok,"file_name":fn,"file_length":str(sz),"file_type":"video/mp4"},timeout=60).json()
  print(" session:",j1)
+ _note_api_error("up_resumable:session", payload=j1)
  if "id" not in j1: return None
  sid=j1["id"]
  with open(path,"rb") as f:
@@ -145,14 +171,16 @@ def up_resumable(pid,tok,path,title,desc):
  print(" handle:",r2.text[:500])
  try: h=r2.json().get("h")
  except: return None
- if not h: return None
+ if not h: _note_api_error("up_resumable:upload", r2); return None
  j3=requests.post(f"https://graph-video.facebook.com/{VER}/{pid}/videos",data={"access_token":tok,"title":title,"description":desc,"fbuploader_video_file_chunk":h},timeout=120).json()
  print(" publish:",j3)
+ _note_api_error("up_resumable:publish", payload=j3)
  return j3.get("id")
 def comment(vid,tok,msg,delay=15):
  if delay>0: print(f"[*] Cho {delay}s roi comment..."); time.sleep(delay)
  r=requests.post(f"https://graph.facebook.com/{VER}/{vid}/comments",data={"access_token":tok,"message":msg},timeout=30)
  print(" cmt:",r.text[:500])
+ _note_api_error("comment", r)
  try: return "id" in r.json()
  except: return False
 def upload_for_page(pg,d1=10,d2=15,big=False):

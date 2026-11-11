@@ -1,0 +1,4 @@
+customtkinter>=5.2
+requests>=2.31
+imageio-ffmpeg>=0.5
+PyInstaller>=6.0; sys_platform == "win32"

@@ -7,7 +7,7 @@
 - Page doi se khong co source.txt (Processing tu bo qua).
 Chay tay: python link_pool.py [--dry-run]
 """
-import os, sys
+import os, sys, re
 POOL_BASE = r"D:\Video Douyin Pool\data\关注"
 BASE = os.path.dirname(os.path.abspath(__file__))
 PAGES_DIR = os.path.join(BASE, "pages")
@@ -42,7 +42,10 @@ def read_source_channel(pg):
             l = raw.strip().strip('"').strip("'")
             if not l or l.startswith("#"):
                 continue
-            parts = l.replace("/", os.sep).split(os.sep)
+            # Tach ca '\' (Windows) va '/' de doc duoc source.txt Windows
+            # tren moi he dieu hanh (truoc day chi tach os.sep nen tren
+            # Linux doc sai duong dan D:\... thanh 1 chuoi duy nhat).
+            parts = [p for p in re.split(r"[\\/]+", l) if p]
             cid = parts[-2] if len(parts) >= 2 and parts[-1] == VIDEO_SUB else parts[-1]
             return cid if cid else None
     except Exception:

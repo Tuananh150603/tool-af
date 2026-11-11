@@ -39,6 +39,17 @@ pages/<PageID>_<Ten>/
   edited/                  # video đã xử lý, chờ upload
 ```
 
+## Giao diện Desktop (GUI)
+
+App desktop Python + CustomTkinter trong `gui/` — quản lý page, gán kênh,
+edit video, upload, hẹn giờ, chống trùng bằng run-log. Xem hướng dẫn đầy đủ:
+**[gui/README_GUI.md](gui/README_GUI.md)**.
+
+```bat
+cd gui
+build.bat        # ra gui\dist\ToolAF.exe (chạy trên Windows)
+```
+
 ## Cài đặt
 
 ```bash

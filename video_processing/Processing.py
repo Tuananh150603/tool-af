@@ -12,7 +12,10 @@ if not FFMPEG:
 def ensure():
  os.makedirs(BGM_DIR,exist_ok=True)
  os.makedirs(PAGES_DIR,exist_ok=True)
-ensure()
+# GUI note: ensure() chi chay khi mo truc tiep (CLI). Import tu GUI khong
+# tu tao thu muc trong repo; GUI tu tao edited/ khi can, khong xoa gi.
+if __name__ == "__main__":
+ ensure()
 def log(m):
  print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {m}",flush=True)
 def run(cmd,timeout=900):
@@ -39,30 +42,73 @@ def ffprobe_dur(path):
   if m: return int(m.group(1))*3600+int(m.group(2))+float(m.group(3))
  except Exception: pass
  return 0.0
+# ---------- Tham so pipeline (mac dinh = dung hang so goc) ----------
+DEFAULT_PARAMS={
+ "speed": 1.045,      # tang toc nhe
+ "zoom": 1.06,        # phong to truoc khi crop
+ "crop_w": 0.94, "crop_h": 0.93,
+ "hflip": True,       # lat ngang
+ "contrast": 1.04, "saturation": 1.03,
+ "noise": 6,          # hat nhieu alls
+ "trim_head": 1,      # cat bo 1s dau (giay)
+ "trim_tail": 2.5,    # cat bo 2.5s cuoi (giay)
+ "bgm_vol": 0.18,     # muc tron nhac nen
+ "use_bgm": True,     # co tron nhac nen neu co file trong bgm/
+}
+def _fmt(v):
+ """Format so cho filter ffmpeg: int -> '6', 1.045 -> '1.045' (khop chuoi goc)."""
+ if isinstance(v, bool):
+  return "1" if v else "0"
+ if isinstance(v, int):
+  return str(v)
+ f = float(v)
+ if f.is_integer():
+  return str(int(f))
+ return repr(round(f, 4))
+def build_filter_complex(p):
+ """Ham thuan: params -> (vf, filter_complex, co_dung_bgm).
+ Voi DEFAULT_PARAMS phai tra ve dung chuoi filter cua ban goc."""
+ speed=_fmt(p["speed"]); zoom=_fmt(p["zoom"])
+ cw=_fmt(p["crop_w"]); ch=_fmt(p["crop_h"])
+ head=_fmt(p["trim_head"])
+ vf=(f"trim=start={head},setpts=PTS-STARTPTS,"
+     f"setpts=PTS/{speed},scale=iw*{zoom}:ih*{zoom},crop=iw*{cw}:ih*{ch},"
+     + ("hflip," if p["hflip"] else "")
+     + f"eq=contrast={_fmt(p['contrast'])}:saturation={_fmt(p['saturation'])},"
+     f"noise=alls={_fmt(p['noise'])}:allf=t")
+ if p.get("use_bgm"):
+  fc=(f"[0:v]{vf}[v];[0:a]atrim=start={head},asetpts=PTS-STARTPTS,atempo={speed}[a0];"
+      f"[1:a]volume={_fmt(p['bgm_vol'])},aresample=44100,aformat=channel_layouts=stereo[a1];"
+      f"[a0][a1]amix=inputs=2:normalize=0[aout]")
+ else:
+  fc=f"[0:v]{vf}[v];[0:a]atrim=start={head},asetpts=PTS-STARTPTS,atempo={speed}[aout]"
+ return vf, fc, bool(p.get("use_bgm"))
 # ---------- EDIT: anti-fingerprint + mix bgm + hardcode + strip metadata ----------
 def pick_bgm():
  cands=[os.path.join(BGM_DIR,f) for f in os.listdir(BGM_DIR)] if os.path.exists(BGM_DIR) else []
  cands=[c for c in cands if c.lower().endswith((".mp3",".wav",".m4a"))]
  return random.choice(cands) if cands else None
-def step56_final(src,out_path,speed=1.045):
- dur=max(0.5,ffprobe_dur(src)-2.5)
- vf=("trim=start=1,setpts=PTS-STARTPTS,"f"setpts=PTS/{speed},scale=iw*1.06:ih*1.06,crop=iw*0.94:ih*0.93,hflip,"
-  "eq=contrast=1.04:saturation=1.03,noise=alls=6:allf=t")
- bgm=pick_bgm()
+def step56_final(src,out_path,params=None,speed=None):
+ """params: dict theo DEFAULT_PARAMS. speed=... (cu) van dung duoc: chi doi toc do."""
+ p=dict(DEFAULT_PARAMS)
+ if params:
+  p.update(params)
+ if speed is not None:
+  p["speed"]=speed
+ dur=max(0.5,ffprobe_dur(src)-float(p["trim_tail"]))
+ vf,fc,use_bgm_flag=build_filter_complex(p)
+ bgm=pick_bgm() if use_bgm_flag else None
+ if bgm is None and use_bgm_flag:
+  # khong co file nhac -> dung filter khong-bgm (giong ban goc)
+  _,fc,_=build_filter_complex({**p,"use_bgm":False})
  inputs=["-y","-i",src]
  if bgm: inputs+=["-i",bgm]
- if bgm:
-  fc=(f"[0:v]{vf}[v];[0:a]atrim=start=1,asetpts=PTS-STARTPTS,atempo={speed}[a0];"
-   f"[1:a]volume=0.18,aresample=44100,aformat=channel_layouts=stereo[a1];"
-   f"[a0][a1]amix=inputs=2:normalize=0[aout]")
- else:
-  fc=f"[0:v]{vf}[v];[0:a]atrim=start=1,asetpts=PTS-STARTPTS,atempo={speed}[aout]"
  run([FFMPEG,*inputs,"-filter_complex",fc,"-map","[v]","-map","[aout]","-t",str(dur),
   "-c:v","libx264","-preset","medium","-crf","20","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k",
   "-map_metadata","-1","-movflags","+faststart",out_path])
  return out_path
 # ---------- PIPELINE + MENU ----------
-def process_one(src,out_dir,overwrite=False):
+def process_one(src,out_dir,overwrite=False,params=None):
  ensure()
  name,_=os.path.splitext(os.path.basename(src))
  stamp=datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -72,7 +118,7 @@ def process_one(src,out_dir,overwrite=False):
  if os.path.exists(out) and not overwrite: return out
  log(f"[EDIT] {name}: anti-fingerprint + mix bgm + strip metadata")
  try:
-  step56_final(src,out)
+  step56_final(src,out,params=params)
  except Exception:
   if os.path.exists(out):  # xoa file loi nua de khong upload phai
    try: os.remove(out)
@@ -183,11 +229,3 @@ def main():
   elif c=="0": break
   else: print("Chon 0-3.")
 if __name__=="__main__": main()
-
-
-
-
-
-
-
-
