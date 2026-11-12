@@ -1,7 +1,7 @@
 """Test views/upload_view.py — model (headless) + bang inline (can Xvfb)."""
 import pytest
 
-from gui.core.runlog import RunLog
+from gui.core.runlog import RunLog, file_hash
 from gui.views.upload_view import build_model
 
 
@@ -59,6 +59,7 @@ def test_bang_inline_dien_san_caption_comment(tk_upload_view):
     p1 = rows["111111111111111_Mua_sắm_quanh_năm"]
     assert p1["video_path"] is not None
     assert p1["video_path"].endswith(".mp4")
+    assert p1["status"] == "Sẽ đăng"
     # Gia tri dien san lay tu dung kho caption/comment chung
     assert p1["cap_entry"].get() in ("Caption chung 1", "Caption chung 2",
                                      "Caption chung 3")
@@ -115,3 +116,80 @@ def test_upload_dung_gia_tri_trong_bang(tk_upload_view, monkeypatch):
     pages, opts, overrides = captured["args"]
     assert len(pages) == 3
     assert overrides == {(p1["page_id"], p1["video_path"]): ("CAP BANG", "CMT BANG")}
+
+
+def test_dong_video_da_dang_hien_ly_do_dup(tk_upload_view, fake_tool_root):
+    """(a) Ca 2 video cua page da co trong run-log (hash khop) -> dong hien
+    'Video này đã đăng rồi', o nhap bi khoa."""
+    app = tk_upload_view
+    view = app.views["upload"]
+    fx = fake_tool_root
+    for name in ("vid1.mp4", "vid2.mp4"):
+        p = fx["p1"] / "edited" / name
+        app.runlog.record_upload("run-old", "111111111111111",
+                                 "111111111111111_Mua_sắm_quanh_năm",
+                                 str(p), file_hash(p), "", "", "123", "ok")
+    view.refresh()
+    app.update()
+    rows = _rows_by_folder(view)
+    r = rows["111111111111111_Mua_sắm_quanh_năm"]
+    assert r["video_path"] is None
+    assert r["status"] == "Video này đã đăng rồi"
+    assert r["cap_entry"].cget("state") == "disabled"
+    assert r["cmt_entry"].cget("state") == "disabled"
+
+
+def test_dong_het_tran_ngay_hien_ly_do_cap(tk_upload_view):
+    """(b) Page da dang du 1 video hom nay (hash khac, khong phai dup) ->
+    dong hien 'Đã đủ 1 video hôm nay', o nhap bi khoa."""
+    app = tk_upload_view
+    view = app.views["upload"]
+    app.runlog.record_upload("run-old", "111111111111111",
+                             "111111111111111_Mua_sắm_quanh_năm",
+                             "/e/khac.mp4", "hash-khac-khong-trung", "", "",
+                             "999", "ok")
+    assert app.runlog.uploads_today("111111111111111") == 1
+    view.refresh()
+    app.update()
+    rows = _rows_by_folder(view)
+    r = rows["111111111111111_Mua_sắm_quanh_năm"]
+    assert r["video_path"] is None
+    assert r["status"] == "Đã đủ 1 video hôm nay"
+    assert r["cap_entry"].cget("state") == "disabled"
+    assert r["cmt_entry"].cget("state") == "disabled"
+
+
+def test_dong_khong_co_video_hien_ly_do(tk_upload_view):
+    """(c) Page khong co video trong edited/ -> 'Không có video'."""
+    app = tk_upload_view
+    view = app.views["upload"]
+    rows = _rows_by_folder(view)
+    for folder in ("222222222222222_Đêm_Bình_Yên", "333333333333333_HANZ"):
+        r = rows[folder]
+        assert r["video_path"] is None
+        assert r["status"] == "Không có video"
+        assert r["cap_entry"].cget("state") == "disabled"
+        assert r["cmt_entry"].cget("state") == "disabled"
+
+
+def test_loi_lap_ke_hoach_hien_dong_loi_tren_man_hinh(tk_upload_view, monkeypatch):
+    """(d) Planner loi -> dong loi do hien ngay tren man Upload (khong chi
+    trong log), bang van hien du dong voi trang thai 'Lỗi kế hoạch'."""
+    app = tk_upload_view
+    view = app.views["upload"]
+
+    def boom(*a, **k):
+        raise RuntimeError("boom test")
+
+    monkeypatch.setattr("gui.adapters.upload_adapter.plan_upload_pages", boom)
+    view.refresh()
+    app.update()
+    assert view._plan_error_label is not None
+    text = view._plan_error_label.cget("text")
+    assert "Không lập được kế hoạch upload" in text
+    assert "boom test" in text
+    rows = _rows_by_folder(view)
+    assert len(rows) == 3
+    for r in rows.values():
+        assert r["status"] == "Lỗi kế hoạch"
+        assert r["cap_entry"].cget("state") == "disabled"

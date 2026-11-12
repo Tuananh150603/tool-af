@@ -3,7 +3,9 @@
 Bang "Video chờ upload" sua duoc ngay trong bang: moi dong page co o nhap
 Caption + Comment dien san gia tri planner se dung cho video tiep theo cua
 page do, nut "Đổi" boc lai ngau nhien tu dung kho cua page do. Nut Upload
-chay voi dung gia tri dang hien trong bang (qua overrides)."""
+chay voi dung gia tri dang hien trong bang (qua overrides). Cot "Trạng thái"
+luon ghi ro ly do dong nao khong dang duoc (het tran ngay / video da dang
+roi / khong co video); loi lap ke hoach hien ngay tren man hinh."""
 import random
 from pathlib import Path
 
@@ -90,9 +92,11 @@ class UploadView(BaseView):
         self.table_wrap = ctk.CTkFrame(self, fg_color="transparent")
         self.table_wrap.pack(fill="both", expand=True, padx=PAD, pady=(0, PAD))
         # Moi dong bang: {page_id, folder, video_path|None, item|None,
-        #                cap_entry, cmt_entry}
+        #                cap_entry, cmt_entry, status}
         self._rows = []
         self._plan = None
+        self._plan_error = None
+        self._plan_error_label = None
         self._fill_opts()
 
     def _fill_opts(self):
@@ -124,6 +128,8 @@ class UploadView(BaseView):
     def refresh(self):
         self._rows = []
         self._plan = None
+        self._plan_error = None
+        self._plan_error_label = None
         model = build_model(self.app.config.tool_root, self.app.runlog)
         folders = ["all"] + [p["folder"] for p in model["pages"]]
         self.target_menu.configure(values=folders)
@@ -141,10 +147,23 @@ class UploadView(BaseView):
             return
         plan = self._build_plan(model["pages"])
         self._plan = plan
+        if self._plan_error:
+            # Loi lap ke hoach phai thay NGAY tren man hinh, khong chi trong log
+            self._plan_error_label = ctk.CTkLabel(
+                self.table_wrap,
+                text=f"Không lập được kế hoạch upload: {self._plan_error}",
+                font=ctk.CTkFont(*FONTS["small_bold"]),
+                text_color=COLORS["danger"], anchor="w")
+            self._plan_error_label.pack(anchor="w", pady=(0, 8))
         by_page = {}
         for item in plan["items"]:
             by_page.setdefault(item["page_id"], item)
-        self._render_table(model["pages"], by_page, cap)
+        skipped_by_page = {}
+        for s in plan["skipped"]:
+            # Uu tien "cap" hon "dup": het tran ngay la ly do chan dang
+            if s["page_id"] not in skipped_by_page or s["reason"] == "cap":
+                skipped_by_page[s["page_id"]] = s["reason"]
+        self._render_table(model["pages"], by_page, skipped_by_page, cap)
 
     def _build_plan(self, pages):
         """Ke hoach upload de dien san caption/comment cho video tiep theo
@@ -155,34 +174,51 @@ class UploadView(BaseView):
             for p in pages:
                 opts["manual_files"][p["folder"]] = manual
         try:
-            return upload_adapter.plan_upload_pages(
+            plan = upload_adapter.plan_upload_pages(
                 self.app.config.tool_root, pages, opts, self.app.runlog,
                 resolve_captions_for_page(self.app.config.tool_root,
                                           self.app.config.get("per_page_captions_enabled", False)))
+            self._plan_error = None
+            return plan
         except Exception as e:
+            self._plan_error = str(e)
             self.app.log(f"Không lập được kế hoạch upload: {e}")
             return {"items": [], "skipped": [], "queue": [], "total": 0,
                     "counts": {"dup": 0, "cap": 0}}
 
-    def _render_table(self, pages, by_page, cap):
-        """Bang sua duoc: Page | Video da edit | Da dang hom nay |
-        Caption | Comment | Đổi. Chi page co video se dang moi sua duoc."""
+    def _row_status(self, page, item, skip_reason, cap):
+        """(text, mau) cho cot Trang thai cua 1 dong — ly do o nhap bi khoa
+        (neu co) phai nhin thay ngay, khong doan mo."""
+        if self._plan_error:
+            return "Lỗi kế hoạch", COLORS["danger"]
+        if item:
+            return "Sẽ đăng", COLORS["success"]
+        if skip_reason == "cap":
+            return f"Đã đủ {cap} video hôm nay", COLORS["warning"]
+        if skip_reason == "dup":
+            return "Video này đã đăng rồi", COLORS["text_muted"]
+        return "Không có video", COLORS["text_muted"]
+
+    def _render_table(self, pages, by_page, skipped_by_page, cap):
+        """Bang sua duoc: Page | Video da edit | Da dang hom nay | Trang thai |
+        Caption | Comment | Đổi. Chi page co video se dang moi sua duoc;
+        dong khong dang duoc luon hien ly do o cot Trang thai."""
         cols = [("Page", 180), ("Video đã edit", 90), ("Đã đăng hôm nay", 110),
-                ("Caption", 0), ("Comment", 0), ("", 64)]
+                ("Trạng thái", 170), ("Caption", 0), ("Comment", 0), ("", 64)]
         header = ctk.CTkFrame(self.table_wrap, fg_color=COLORS["bg_hover"], corner_radius=6)
         header.pack(fill="x", pady=2)
         for ci, (text, w) in enumerate(cols):
             ctk.CTkLabel(header, text=text, font=ctk.CTkFont(*FONTS["small_bold"]),
                          text_color=COLORS["text"], width=w, anchor="w").grid(
                              row=0, column=ci, padx=PAD_SMALL, pady=6, sticky="w")
-        header.grid_columnconfigure(3, weight=1)
         header.grid_columnconfigure(4, weight=1)
+        header.grid_columnconfigure(5, weight=1)
         for ri, p in enumerate(pages):
             bg = COLORS["bg_row_alt"] if ri % 2 else COLORS["bg_card"]
             fr = ctk.CTkFrame(self.table_wrap, fg_color=bg, corner_radius=6)
             fr.pack(fill="x", pady=2)
-            fr.grid_columnconfigure(3, weight=1)
             fr.grid_columnconfigure(4, weight=1)
+            fr.grid_columnconfigure(5, weight=1)
             ctk.CTkLabel(fr, text=p["name"], font=ctk.CTkFont(*FONTS["body"]),
                          text_color=COLORS["text"], width=180, anchor="w").grid(
                              row=0, column=0, padx=PAD_SMALL, pady=6, sticky="w")
@@ -195,6 +231,11 @@ class UploadView(BaseView):
                          text_color=COLORS["text"], width=110, anchor="w").grid(
                              row=0, column=2, padx=PAD_SMALL, pady=6, sticky="w")
             item = by_page.get(p["id"])
+            status_text, status_color = self._row_status(
+                p, item, skipped_by_page.get(p["id"]), cap)
+            ctk.CTkLabel(fr, text=status_text, font=ctk.CTkFont(*FONTS["body"]),
+                         text_color=status_color, width=170, anchor="w").grid(
+                             row=0, column=3, padx=PAD_SMALL, pady=6, sticky="w")
             cap_entry = ctk.CTkEntry(fr, placeholder_text="Caption...",
                                      fg_color=COLORS["bg_input"],
                                      border_color=COLORS["border"],
@@ -202,7 +243,7 @@ class UploadView(BaseView):
                                      placeholder_text_color=COLORS["text_muted"],
                                      font=ctk.CTkFont(*FONTS["body"]),
                                      height=36, corner_radius=8)
-            cap_entry.grid(row=0, column=3, padx=PAD_SMALL, pady=6, sticky="ew")
+            cap_entry.grid(row=0, column=4, padx=PAD_SMALL, pady=6, sticky="ew")
             cmt_entry = ctk.CTkEntry(fr, placeholder_text="Comment (kèm link Shopee)...",
                                      fg_color=COLORS["bg_input"],
                                      border_color=COLORS["border"],
@@ -210,12 +251,13 @@ class UploadView(BaseView):
                                      placeholder_text_color=COLORS["text_muted"],
                                      font=ctk.CTkFont(*FONTS["body"]),
                                      height=36, corner_radius=8)
-            cmt_entry.grid(row=0, column=4, padx=PAD_SMALL, pady=6, sticky="ew")
+            cmt_entry.grid(row=0, column=5, padx=PAD_SMALL, pady=6, sticky="ew")
             row = {"page_id": p["id"], "folder": p["folder"],
                    "video_path": item["video_path"] if item else None,
-                   "item": item, "cap_entry": cap_entry, "cmt_entry": cmt_entry}
+                   "item": item, "cap_entry": cap_entry, "cmt_entry": cmt_entry,
+                   "status": status_text}
             doi_btn = ghost_button(fr, "Đổi", lambda r=row: self._reroll_row(r))
-            doi_btn.grid(row=0, column=5, padx=PAD_SMALL, pady=6)
+            doi_btn.grid(row=0, column=6, padx=PAD_SMALL, pady=6)
             if item:
                 cap_entry.insert(0, item["caption"])
                 cmt_entry.insert(0, item["comment"])
