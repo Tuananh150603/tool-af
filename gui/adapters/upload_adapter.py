@@ -11,21 +11,22 @@ An toan (mac dinh BAT, theo cai dat):
 import contextlib
 import io
 import os
-import sys
 from pathlib import Path
 
 import requests
 
+from gui.adapters._loader import load_script
 from gui.core import store
 from gui.core.runlog import file_hash
 from gui.core.safety import (backoff_until, classify_fb_error, should_stop)
 
 
 def load(tool_root):
+    m = load_script(tool_root, "Uploadvideo_multipage.py",
+                    ("clear_api_error", "fetch_pages", "setup_all_pages",
+                     "list_local_pages", "up_simple", "up_resumable",
+                     "comment"))
     root = str(Path(tool_root))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-    import Uploadvideo_multipage as m
     m.BASE = root
     m.PAGES_DIR = str(Path(tool_root) / "pages")
     m.CAPF = str(Path(tool_root) / "captions.txt")

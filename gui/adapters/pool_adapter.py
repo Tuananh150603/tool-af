@@ -3,16 +3,15 @@
 Chi doi POOL_BASE / PAGES_DIR / BASE theo cau hinh (duong dan Windows tren
 may Han), KHONG doi logic gan 1-1 / FIFO / dry-run cua script goc.
 """
-import sys
 from pathlib import Path
+
+from gui.adapters._loader import load_script
 
 
 def _load(tool_root):
-    root = str(Path(tool_root))
-    if root not in sys.path:
-        sys.path.insert(0, root)
-    import link_pool
-    return link_pool
+    return load_script(tool_root, "link_pool.py",
+                       ("auto_link", "list_pages", "list_pool_ids",
+                        "read_source_channel", "write_source"))
 
 
 def apply_roots(tool_root, pool_root):

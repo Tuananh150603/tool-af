@@ -5,27 +5,30 @@
 - Mac dinh KHONG xoa video goc sau edit (khac CLI goc): chong trung bang
   run-log (hash nguon). Chi xoa khi Han bat tuy chon trong Cai dat.
 """
+import inspect
 import os
-import sys
 from pathlib import Path
 
+from gui.adapters._loader import UPDATE_HINT, load_script
 from gui.core import store
 from gui.core.pipeline import effective_params
 from gui.core.runlog import file_hash
 
 
 def load(tool_root, ffmpeg_bin=""):
-    root = str(Path(tool_root))
-    vp = str(Path(tool_root) / "video_processing")
-    for p in (vp, root):
-        if p not in sys.path:
-            sys.path.insert(0, p)
-    import Processing
-    Processing.PAGES_DIR = str(Path(tool_root) / "pages")
-    Processing.BGM_DIR = str(Path(tool_root) / "video_processing" / "bgm")
+    m = load_script(tool_root, "video_processing/Processing.py",
+                    ("process_one", "read_source_dir", "list_videos"))
+    # Ban cu (10/2026) co process_one nhung KHONG co tham so params ->
+    # kiem tra chu ky ham, khong chi ten ham.
+    if "params" not in inspect.signature(m.process_one).parameters:
+        raise RuntimeError(
+            "video_processing/Processing.py la ban cu "
+            "(process_one thieu tham so params). " + UPDATE_HINT)
+    m.PAGES_DIR = str(Path(tool_root) / "pages")
+    m.BGM_DIR = str(Path(tool_root) / "video_processing" / "bgm")
     if ffmpeg_bin:
-        Processing.FFMPEG = ffmpeg_bin
-    return Processing
+        m.FFMPEG = ffmpeg_bin
+    return m
 
 
 def page_dicts(tool_root):
