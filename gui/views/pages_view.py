@@ -1,4 +1,5 @@
 """Quan ly Page: quet page, kiem tra token, sua tag ngach, xoa page chet."""
+import tkinter as tk
 from pathlib import Path
 
 import customtkinter as ctk
@@ -65,8 +66,30 @@ class PagesView(BaseView):
         ghost_button(row, "Lưu tag", self.on_save_niche).pack(side="left", padx=(10, 0))
         self.table_wrap = ctk.CTkFrame(self, fg_color="transparent")
         self.table_wrap.pack(fill="both", expand=True, padx=PAD, pady=(0, PAD))
+        # Cuon ngang: bang rong hon cua so thi keo thanh cuon ben duoi, khong
+        # cot nao bi ket ngoai man hinh. Chieu cao canvas = dung chieu cao
+        # noi dung (cuon doc van do BaseView lo).
+        self._table_canvas = tk.Canvas(self.table_wrap, highlightthickness=0,
+                                       bg=COLORS["bg"])
+        self._table_hbar = ctk.CTkScrollbar(
+            self.table_wrap, orientation="horizontal",
+            command=self._table_canvas.xview)
+        self._table_canvas.configure(xscrollcommand=self._table_hbar.set)
+        self._table_inner = ctk.CTkFrame(self._table_canvas, fg_color="transparent")
+        self._table_canvas.create_window((0, 0), window=self._table_inner, anchor="nw")
+        self._table_inner.bind("<Configure>", self._on_table_inner_configure)
+        self._table_canvas.pack(side="top", fill="x")
+        self._table_hbar.pack(side="top", fill="x")
         # Moi dong bang: {folder, name, delete_button}
         self._rows = []
+
+    def _on_table_inner_configure(self, event=None):
+        """Cap nhat vung cuon + chieu cao canvas theo noi dung bang."""
+        bbox = self._table_canvas.bbox("all")
+        if bbox:
+            self._table_canvas.configure(
+                scrollregion=bbox,
+                height=self._table_inner.winfo_reqheight())
 
     def refresh(self):
         model = build_model(self.app.config.tool_root, self.app.config.pool_root,
@@ -77,15 +100,18 @@ class PagesView(BaseView):
         self.page_menu.configure(values=folders or ["(chưa có page)"])
         if folders and not self.page_menu_var.get():
             self.page_menu_var.set(folders[0])
-        clear_frame(self.table_wrap)
+        clear_frame(self._table_inner)
         self._rows = []
-        heading(self.table_wrap, f"Pages ({len(pages)})").pack(anchor="w", pady=(0, 8))
+        heading(self._table_inner, f"Pages ({len(pages)})").pack(anchor="w", pady=(0, 8))
         if not pages:
-            muted(self.table_wrap, "Không có page nào khớp bộ lọc.").pack(anchor="w")
+            muted(self._table_inner, "Không có page nào khớp bộ lọc.").pack(anchor="w")
             return
-        cols = [("Page", 240), ("ID", 160), ("Kênh", 150), ("Ngách", 120),
-                ("Token file", 90), ("Token", 150), ("Trạng thái", 130), ("", 90)]
-        header = ctk.CTkFrame(self.table_wrap, fg_color=COLORS["bg_hover"], corner_radius=6)
+        # Nut "Xoa page" dat ngay sau cot Page (cot 1) de luon thay duoc,
+        # khong can keo ngang. Tong be rong ~895px + padding vua cua so
+        # 1280 (sidebar 210); cua so hep hon thi keo thanh cuon ngang.
+        cols = [("Page", 165), ("", 90), ("ID", 120), ("Kênh", 120), ("Ngách", 90),
+                ("Token file", 60), ("Token", 140), ("Trạng thái", 110)]
+        header = ctk.CTkFrame(self._table_inner, fg_color=COLORS["bg_hover"], corner_radius=6)
         header.pack(fill="x", pady=2)
         for ci, (text, w) in enumerate(cols):
             ctk.CTkLabel(header, text=text, font=ctk.CTkFont(*FONTS["small_bold"]),
@@ -93,25 +119,27 @@ class PagesView(BaseView):
                              row=0, column=ci, padx=PAD_SMALL, pady=6, sticky="w")
         for ri, p in enumerate(pages):
             bg = COLORS["bg_row_alt"] if ri % 2 else COLORS["bg_card"]
-            fr = ctk.CTkFrame(self.table_wrap, fg_color=bg, corner_radius=6)
+            fr = ctk.CTkFrame(self._table_inner, fg_color=bg, corner_radius=6)
             fr.pack(fill="x", pady=2)
+            # Cot 1 la nut Xoa page; cac o chu map sang cot 0, 2, 3, 4, 5.
             cells = [
-                (p["name"], 240), (p["id"], 160), (p["channel"] or "—", 150),
-                (p["niche"] or "—", 120),
-                ("Có" if p["has_token"] else "Không", 90),
+                (0, p["name"], 165), (2, p["id"], 120),
+                (3, p["channel"] or "—", 120), (4, p["niche"] or "—", 90),
+                (5, "Có" if p["has_token"] else "Không", 60),
             ]
-            for ci, (text, w) in enumerate(cells):
+            for ci, text, w in cells:
                 ctk.CTkLabel(fr, text=text, font=ctk.CTkFont(*FONTS["body"]),
                              text_color=COLORS["text"], width=w, anchor="w").grid(
                                  row=0, column=ci, padx=PAD_SMALL, pady=6, sticky="w")
             pill(fr, "token_" + p["token_status"]).grid(
-                row=0, column=5, padx=PAD_SMALL, pady=6, sticky="w")
-            pill(fr, p["status"]).grid(
                 row=0, column=6, padx=PAD_SMALL, pady=6, sticky="w")
+            pill(fr, p["status"]).grid(
+                row=0, column=7, padx=PAD_SMALL, pady=6, sticky="w")
             row = {"folder": p["folder"], "name": p["name"]}
             btn = danger_button(fr, "Xóa page",
                                 lambda f=p["folder"], n=p["name"]: self.on_delete_page(f, n))
-            btn.grid(row=0, column=7, padx=PAD_SMALL, pady=6)
+            btn.configure(width=84)
+            btn.grid(row=0, column=1, padx=PAD_SMALL, pady=6)
             row["delete_button"] = btn
             self._rows.append(row)
 
