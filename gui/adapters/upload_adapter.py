@@ -137,12 +137,91 @@ def upload_one(m, page, video_path, caption, comment_text,
     return vid, kind, False
 
 
-def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolver):
+def plan_upload_pages(tool_root, pages, opts, runlog, caption_resolver, log=None):
+    """Lap ke hoach upload (KHONG upload, KHONG ghi run-log).
+
+    Day la DUONG CHON DUY NHAT: run_upload_pages cung chay qua ham nay, nen
+    video xem truoc thay dung la video se dang (cung thu tu, cung cap/dedup).
+    pages: [{id, name, folder, dir, token}].
+    opts: gap, comment_delay, big_first, shuffle, cap_enabled, cap_per_page,
+          manual_files {folder: path}, rng.
+    caption_resolver(page_dir) -> (captions, comments, nguon_caption).
+    Tra {"items", "skipped", "queue", "total", "counts"}:
+    - items: [{page_id, page_name, folder, page_dir, video_path, video_name,
+               caption, comment, file_hash, caption_pool, comment_pool}]
+    - skipped: [{page_id, page_name, folder, video_path, video_name,
+                 reason ("dup"|"cap"), file_hash}]
+    - queue: cac quyet dinh "upload"/"skip" theo dung thu tu run xu ly.
+    - total: so video xet (items + skipped); counts: {"dup": n, "cap": n}.
+    """
+    import random
+    rng = opts.get("rng") or random
+    cap_enabled = bool(opts.get("cap_enabled", True))
+    cap_per_page = int(opts.get("cap_per_page", 1))
+    shuffle = bool(opts.get("shuffle", True))
+    manual_files = opts.get("manual_files") or {}
+    comments_all = store.load_text_lines(Path(tool_root) / "comments.txt")
+    _log = log or (lambda *a, **k: None)
+
+    items, skipped, queue = [], [], []
+    for page in pages:
+        vdir = Path(page["dir"]) / "edited"
+        vids = [str(p) for p in store.list_videos(vdir)]
+        if not vids and manual_files.get(page["folder"]):
+            manual = manual_files[page["folder"]]
+            if os.path.isfile(manual):
+                vids = [manual]
+                _log(f"[{page['name']}] edited/ trống — dùng file nhập tay: {Path(manual).name}")
+        if not vids:
+            _log(f"[{page['name']}] Không có video trong edited/ — bỏ qua page.")
+            continue
+        if shuffle:
+            rng.shuffle(vids)
+        captions, comments, cap_src = caption_resolver(page["dir"])
+        captions = captions or store.load_text_lines(Path(tool_root) / "captions.txt")
+        comments = comments or comments_all
+        planned_today = runlog.uploads_today(page["id"])
+        for vp in vids:
+            fh = file_hash(vp)
+            base = {"page_id": page["id"], "page_name": page["name"],
+                    "folder": page["folder"], "video_path": vp,
+                    "video_name": Path(vp).name, "file_hash": fh}
+            if runlog.is_file_uploaded(fh):
+                entry = dict(base, reason="dup")
+                skipped.append(entry)
+                queue.append(dict(entry, action="skip"))
+                continue
+            if cap_enabled and planned_today >= cap_per_page:
+                entry = dict(base, reason="cap")
+                skipped.append(entry)
+                queue.append(dict(entry, action="skip"))
+                break  # het tran ngay cua page nay -> sang page khac
+            cap = rng.choice(captions) if captions else ""
+            cmt = rng.choice(comments) if comments else ""
+            item = dict(base, page_dir=page["dir"], caption=cap, comment=cmt,
+                        caption_pool=list(captions), comment_pool=list(comments))
+            items.append(item)
+            queue.append(dict(item, action="upload"))
+            planned_today += 1
+    counts = {"dup": sum(1 for s in skipped if s["reason"] == "dup"),
+              "cap": sum(1 for s in skipped if s["reason"] == "cap")}
+    return {"items": items, "skipped": skipped, "queue": queue,
+            "total": len(queue), "counts": counts}
+
+
+def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolver,
+                     overrides=None, skip=None, plan=None):
     """Dieu phoi dot upload nhieu page.
     pages: [{id, name, folder, dir, token}] (token da lam moi truoc).
     opts: gap, comment_delay, big_first, shuffle, cap_enabled, cap_per_page,
           stop_on_checkpoint, backoff_minutes, manual_files {folder: path}, rng.
     caption_resolver(page_dir) -> (captions, comments, nguon_caption).
+    overrides: {(page_id, video_path): (caption, comment)} — dung dung gia tri
+          da sua o man Xem truoc thay vi boc ngau nhien (mac dinh: khong co).
+    skip: {(page_id, video_path)} — bo qua theo lua chon Xem truoc: khong
+          upload, khong tinh loi, ghi run-log "skipped_user".
+    plan: ke hoach co san tu plan_upload_pages (man Xem truoc truyen vao de
+          thu tu + caption hien dung nhu da xem; mac dinh: lap moi).
     Tra summary dict (co stopped/stop_kind/stop_page/stop_video khi dung khan)."""
     import random
     m = load(tool_root)
@@ -150,13 +229,12 @@ def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolv
     gap = int(opts.get("gap", 10))
     comment_delay = int(opts.get("comment_delay", 15))
     big_first = bool(opts.get("big_first", False))
-    shuffle = bool(opts.get("shuffle", True))
-    cap_enabled = bool(opts.get("cap_enabled", True))
     cap_per_page = int(opts.get("cap_per_page", 1))
     stop_on_checkpoint = bool(opts.get("stop_on_checkpoint", True))
     backoff_minutes = int(opts.get("backoff_minutes", 15))
-    manual_files = opts.get("manual_files") or {}
-    comments_all = store.load_text_lines(Path(tool_root) / "comments.txt")
+    overrides = overrides or {}
+    skip = skip or set()
+    pages_by_id = {p["id"]: p for p in pages}
 
     total = ok = failed = skipped = 0
     stopped = False
@@ -190,72 +268,69 @@ def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolv
         ctx.log(f"[CẢNH BÁO] Đang trong thời gian backoff sau 429 "
                 f"(còn {int(backoff_left // 60)} phút) — chạy theo lệnh tay.")
 
-    for page in pages:
+    if plan is None:
+        plan = plan_upload_pages(tool_root, pages, opts, runlog, caption_resolver,
+                                 log=ctx.log)
+    queue = plan["queue"]
+    for qi, entry in enumerate(queue):
         if stopped or ctx.is_stopped():
             break
-        vdir = Path(page["dir"]) / "edited"
-        vids = [str(p) for p in store.list_videos(vdir)]
-        if not vids and manual_files.get(page["folder"]):
-            manual = manual_files[page["folder"]]
-            if os.path.isfile(manual):
-                vids = [manual]
-                ctx.log(f"[{page['name']}] edited/ trống — dùng file nhập tay: {Path(manual).name}")
-        if not vids:
-            ctx.log(f"[{page['name']}] Không có video trong edited/ — bỏ qua page.")
-            continue
-        if shuffle:
-            rng.shuffle(vids)
-        captions, comments, cap_src = caption_resolver(page["dir"])
-        captions = captions or store.load_text_lines(Path(tool_root) / "captions.txt")
-        comments = comments or comments_all
-        for i, vp in enumerate(vids, 1):
-            if stopped or ctx.is_stopped():
-                break
-            total += 1
-            ctx.progress(total - 1, None, f"Đang upload {Path(vp).name} ({page['name']})")
-            fh = file_hash(vp)
-            if runlog.is_file_uploaded(fh):
-                skipped += 1
-                ctx.log(f"[BỎ QUA] {Path(vp).name}: đã đăng rồi (chống trùng).")
-                runlog.record_upload(run_id, page["id"], page["folder"], vp, fh,
+        page = pages_by_id[entry["page_id"]]
+        vp = entry["video_path"]
+        fh = entry["file_hash"]
+        key = (entry["page_id"], vp)
+        total += 1
+        if entry["action"] == "skip":
+            skipped += 1
+            ctx.progress(total - 1, None, f"Đang upload {entry['video_name']} ({entry['page_name']})")
+            if entry["reason"] == "dup":
+                ctx.log(f"[BỎ QUA] {entry['video_name']}: đã đăng rồi (chống trùng).")
+                runlog.record_upload(run_id, entry["page_id"], entry["folder"], vp, fh,
                                     "", "", "", "skipped_dup")
-                continue
-            if cap_enabled and runlog.uploads_today(page["id"]) >= cap_per_page:
-                skipped += 1
-                ctx.log(f"[BỎ QUA] {page['name']}: đã đủ {cap_per_page} video hôm nay.")
-                runlog.record_upload(run_id, page["id"], page["folder"], vp, fh,
-                                    "", "", "", "skipped_cap")
-                break  # het tran ngay cua page nay -> sang page khac
-            cap = rng.choice(captions) if captions else ""
-            cmt = rng.choice(comments) if comments else ""
-            ctx.log(f"[{page['name']}] ({i}/{len(vids)}) {Path(vp).name} — caption: {cap[:60]}")
-            runlog.record_upload(run_id, page["id"], page["folder"], vp, fh,
-                                cap, cmt, "", "pending")
-            vid, kind, was_stopped = upload_one(m, page, vp, cap, cmt,
-                                                big_first, comment_delay, ctx)
-            if was_stopped:
-                stopped = True
-                ctx.log("[DỪNG] Người dùng dừng trong lúc chờ comment.")
-                break
-            if vid:
-                ok += 1
-                runlog.mark_upload(run_id, fh, "ok", fb_video_id=vid)
-                ctx.log(f"[+] Video ID: {vid}")
             else:
-                failed += 1
-                err = getattr(m, "LAST_API_ERROR", None)
-                runlog.mark_upload(run_id, fh, "failed",
-                                  error=str((err or {}).get("message", "upload thất bại"))[:200],
-                                  kind=kind or "")
-                ctx.log(f"[!] Upload thất bại: {Path(vp).name}")
-            if kind and should_stop(kind, stop_on_checkpoint):
-                _stop(kind, page, vp, getattr(m, "LAST_API_ERROR", None))
+                ctx.log(f"[BỎ QUA] {entry['page_name']}: đã đủ {cap_per_page} video hôm nay.")
+                runlog.record_upload(run_id, entry["page_id"], entry["folder"], vp, fh,
+                                    "", "", "", "skipped_cap")
+            continue
+        # Video trong ke hoach: co the bi bo qua / sua caption-comment o man Xem truoc
+        cap, cmt = overrides.get(key, (entry["caption"], entry["comment"]))
+        if key in skip:
+            skipped += 1
+            ctx.progress(total - 1, None, f"Bỏ qua {entry['video_name']} ({entry['page_name']})")
+            ctx.log(f"[BỎ QUA] {entry['video_name']}: đã bỏ qua theo lựa chọn xem trước.")
+            runlog.record_upload(run_id, entry["page_id"], entry["folder"], vp, fh,
+                                cap, cmt, "", "skipped_user")
+            continue
+        ctx.progress(total - 1, None, f"Đang upload {entry['video_name']} ({entry['page_name']})")
+        ctx.log(f"[{entry['page_name']}] {entry['video_name']} — caption: {cap[:60]}")
+        runlog.record_upload(run_id, entry["page_id"], entry["folder"], vp, fh,
+                            cap, cmt, "", "pending")
+        vid, kind, was_stopped = upload_one(m, page, vp, cap, cmt,
+                                            big_first, comment_delay, ctx)
+        if was_stopped:
+            stopped = True
+            ctx.log("[DỪNG] Người dùng dừng trong lúc chờ comment.")
+            break
+        if vid:
+            ok += 1
+            runlog.mark_upload(run_id, fh, "ok", fb_video_id=vid)
+            ctx.log(f"[+] Video ID: {vid}")
+        else:
+            failed += 1
+            err = getattr(m, "LAST_API_ERROR", None)
+            runlog.mark_upload(run_id, fh, "failed",
+                              error=str((err or {}).get("message", "upload thất bại"))[:200],
+                              kind=kind or "")
+            ctx.log(f"[!] Upload thất bại: {entry['video_name']}")
+        if kind and should_stop(kind, stop_on_checkpoint):
+            _stop(kind, page, vp, getattr(m, "LAST_API_ERROR", None))
+            break
+        # Nghi giua cac video CUNG page (nhu cu: sau moi video tru video cuoi cua page)
+        if gap > 0 and qi + 1 < len(queue) and queue[qi + 1]["page_id"] == entry["page_id"]:
+            if not ctx.sleep(gap):
+                stopped = True
+                ctx.log("[DỪNG] Người dùng dừng trong lúc nghỉ giữa video.")
                 break
-            if i < len(vids) and gap > 0:
-                if not ctx.sleep(gap):
-                    stopped = True
-                    ctx.log("[DỪNG] Người dùng dừng trong lúc nghỉ giữa video.")
-                    break
     return {"total": total, "ok": ok, "failed": failed, "skipped": skipped,
             "stopped": stopped or ctx.is_stopped(),
             "stop_kind": stop_info["kind"], "stop_page": stop_info["page"],

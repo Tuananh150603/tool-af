@@ -43,7 +43,7 @@ python app.py
 | 3 | Link Pool | Xem trước gán kênh (**dry-run, không ghi file**) / Áp dụng gán / Gán tay / Gỡ gán — STRICT 1-1, FIFO |
 | 4 | Kênh nguồn | Thêm/xóa kênh Douyin trong pool, xem kênh nào chưa gán |
 | 5 | Xử lý video | Pipeline FFmpeg: chỉnh thông số (tốc độ, crop, contrast, noise...), **dao động nhẹ mỗi video** (tắt mặc định), xem trước video đã edit, chọn tất cả/1 page |
-| 6 | Upload | Chọn 1 page hoặc tất cả, xáo trộn, nghỉ giữa video (10s), chờ trước khi comment (15s), simple/resumable, nhập tay 1 file khi edited/ trống, **Tiếp tục đợt dở** |
+| 6 | Upload | Chọn 1 page hoặc tất cả, xáo trộn, nghỉ giữa video (10s), chờ trước khi comment (15s), simple/resumable, nhập tay 1 file khi edited/ trống, **Tiếp tục đợt dở**, **sửa caption/comment ngay trong bảng**: mỗi dòng page có ô Caption + Comment điền sẵn giá trị planner sẽ dùng cho video tiếp theo của page đó (chỉ page có video sẽ đăng mới sửa được), nút **Đổi** bốc lại ngẫu nhiên từ đúng kho của page đó, nút Upload chạy với đúng giá trị đang hiện trong bảng |
 | 7 | Caption & Comment | Sửa kho caption chung (47 dòng) / comment chung (100 dòng), xem **link Shopee nào đang xoay vòng** (hiện 3 link) + thêm link mới, caption riêng từng page |
 | 8 | Nhạc nền | Thêm/xóa file nhạc trong `bgm/`, bật/tắt trộn nhạc, xem mức trộn (0.18) |
 | 9 | Lịch sử | Nhật ký edit/upload/sự kiện an toàn (file JSON local), tóm tắt từng đợt chạy |
