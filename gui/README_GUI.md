@@ -7,7 +7,7 @@ API, kèm caption/comment gắn link Shopee Affiliate.
 Chạy trên **Windows 10/11**, bấm đúp file `.exe` là mở. Code gốc (3 script CLI)
 giữ nguyên hành vi — GUI chỉ là lớp bọc mỏng bên trên.
 
-## Chạy nhanh (trên máy Han)
+## Chạy nhanh (trên Windows)
 
 **Cách 1 — file .exe (khuyến nghị):**
 
@@ -31,8 +31,8 @@ pip install -r requirements.txt
 python app.py
 ```
 
-> Lưu ý: `.exe` Windows **không build được trên VM Linux** — Han chạy
-> `build.bat` trên máy mình để ra file `.exe`.
+> Lưu ý: `.exe` Windows **không build được trên Linux** — chạy
+> `build.bat` trên máy Windows để ra file `.exe`.
 
 ## 12 màn hình
 
@@ -57,7 +57,7 @@ python app.py
    lỗi rồi chạy tiếp. GUI tự dừng toàn bộ đợt chạy khi Facebook trả checkpoint,
    khóa tài khoản, 429 hoặc token hết hạn; hiện **banner đỏ** ghi rõ lý do +
    page/video đang chạy dở; ghi sự kiện vào Lịch sử; **không tự chạy lại** —
-   chỉ chạy tiếp khi Han bấm tay. Khi API trả 429 thì đặt **backoff** (mặc
+   chỉ chạy tiếp khi người dùng bấm tay. Khi API trả 429 thì đặt **backoff** (mặc
    định 15 phút) — trong thời gian backoff, chạy tay vẫn được nhưng app cảnh báo.
 2. **Caption theo ngách từng page (mặc định TẮT = dùng chung như cũ):** page
    nào có file `captions_gui.txt` riêng thì dùng kho đó; không có thì dùng kho
@@ -65,7 +65,7 @@ python app.py
    chung.
 3. **Ngẫu nhiên nhẹ thông số xử lý (mặc định TẮT):** mọi video đang qua đúng 1
    công thức cố định nên dễ bị bắt mẫu. Khi bật, mỗi video lấy mẫu ngẫu nhiên
-   trong khoảng Han chỉnh được (vd tốc độ 1.03–1.06, contrast 1.02–1.06).
+   trong khoảng chỉnh được (vd tốc độ 1.03–1.06, contrast 1.02–1.06).
 4. **Dọn dữ liệu cũ:** xem mục 10 ở trên.
 5. **Tìm kiếm / lọc page:** ô tìm kiếm + lọc theo trạng thái trên Dashboard và
    màn Page (chuẩn bị lên 50 page).
@@ -164,7 +164,7 @@ ghi file, run-log ghi/đọc đúng, config lưu/load đúng, build.bat đủ 4 
 - **Không có màn analytics / hoa hồng:** tool gốc không có dữ liệu đó nên
   GUI không bịa số liệu. Muốn xem hiệu quả thì xem Facebook Insights /
   Shopee Affiliate.
-- Không xử lý checkpoint thay Han — chỉ dừng lại và báo rõ để Han tự xử lý.
+- Không tự xử lý checkpoint — chỉ dừng lại và báo rõ để người dùng tự xử lý.
 - Upload resumable của tool gốc gửi toàn bộ file trong 1 request (không chia
   chunk) — GUI giữ nguyên hành vi này, không sửa.
 
