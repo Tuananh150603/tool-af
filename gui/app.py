@@ -266,6 +266,11 @@ class App(ctk.CTk):
                     "stop_on_checkpoint": self.config.get("stop_on_checkpoint", True),
                     "backoff_minutes": self.config.get("rate_limit_backoff_minutes", 15),
                     "manual_files": {}, "rng": ctx.rng}
+            # Giong man Upload tay: page chet thi bo qua, khong dung dot hen gio.
+            live_ids = upload_adapter.fetch_live_page_ids(
+                self.config.tool_root, self.config.get("user_token", ""))
+            if live_ids is not None:
+                opts["live_page_ids"] = live_ids
             s = upload_adapter.run_upload_pages(
                 self.config.tool_root, pages, opts, self.runlog, ctx.run_id, ctx,
                 resolve_captions_for_page(

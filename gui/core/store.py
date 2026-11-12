@@ -6,6 +6,8 @@ KHONG goi retrofit_all_pages() o day: GUI chi tao thu muc edited/ khi thieu,
 khong xoa Non_edit/, videos/ hay captions.txt/comments.txt cua page.
 """
 import re
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 VIDEO_EXTS = (".mp4", ".mov", ".mkv", ".avi")
@@ -121,6 +123,31 @@ def read_niche(page_dir):
 def write_niche(page_dir, tag):
     f = Path(page_dir) / NICHE_FILENAME
     f.write_text((tag or "").strip(), encoding="utf-8")
+
+
+def delete_page(tool_root, folder):
+    """Chuyen thu muc pages/<folder> sang pages_deleted/<folder>_<YYYYMMDD-HHMMSS>.
+
+    Chi DI CHUYEN, khong xoa vinh vien — muon khoi phuc thi chuyen thu muc
+    do ve lai pages/. Vi page khong con trong pages/ nen tu bien khoi
+    Dashboard, Upload, Link Pool, Xử lý video (cac man nay deu quet pages/).
+    Tra duong dan dich (Path). Raise ValueError neu ten folder khong hop le
+    hoac thu muc page khong ton tai."""
+    if not folder or folder in (".", "..") or "/" in folder or "\\" in folder:
+        raise ValueError(f"Tên page không hợp lệ: {folder!r}")
+    src = Path(tool_root) / "pages" / folder
+    if not src.is_dir():
+        raise ValueError(f"Không tìm thấy page: {folder}")
+    trash = Path(tool_root) / "pages_deleted"
+    trash.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dest = trash / f"{folder}_{stamp}"
+    i = 2
+    while dest.exists():
+        dest = trash / f"{folder}_{stamp}_{i}"
+        i += 1
+    shutil.move(str(src), str(dest))
+    return dest
 
 
 def page_status(tool_root, pool_root, page_dir):

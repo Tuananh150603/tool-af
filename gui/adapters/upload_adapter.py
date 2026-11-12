@@ -84,6 +84,23 @@ def fetch_pages(tool_root, user_token):
     return pages, getattr(m, "LAST_API_ERROR", None)
 
 
+def fetch_live_page_ids(tool_root, user_token):
+    """Set id cac page CON SONG theo /me/accounts, hoac None neu khong kiem
+    tra duoc (khong co user token / mat mang / API loi / khong co page nao).
+    Tra None de giu hanh vi cu — an toan: khong bo qua nham page song khi
+    khong xac minh duoc."""
+    if not user_token or len(str(user_token).strip()) < 20:
+        return None
+    try:
+        pages, err = fetch_pages(tool_root, user_token)
+    except Exception:
+        return None
+    if err or not isinstance(pages, list) or not pages:
+        return None
+    ids = {str(p.get("id")) for p in pages if isinstance(p, dict) and p.get("id")}
+    return ids or None
+
+
 def setup_pages(tool_root, user_token):
     """Quet page tu user token + tao thu muc page (ham goc setup_all_pages)."""
     m = load(tool_root)
@@ -145,18 +162,22 @@ def plan_upload_pages(tool_root, pages, opts, runlog, caption_resolver, log=None
     opts: gap, comment_delay, big_first, shuffle,
           manual_files {folder: path}, rng.
     caption_resolver(page_dir) -> (captions, comments, nguon_caption).
+    opts co the co live_page_ids (set id page con song theo /me/accounts,
+    hoac None): page khong nam trong set thi toan bo video cua no duoc
+    ghi skipped ly do "dead_page" — de run bo qua ma khong dung dot.
     Tra {"items", "skipped", "queue", "total", "counts"}:
     - items: [{page_id, page_name, folder, page_dir, video_path, video_name,
                caption, comment, file_hash, caption_pool, comment_pool}]
     - skipped: [{page_id, page_name, folder, video_path, video_name,
-                 reason ("dup"), file_hash}]
+                 reason ("dup"|"dead_page"), file_hash}]
     - queue: cac quyet dinh "upload"/"skip" theo dung thu tu run xu ly.
-    - total: so video xet (items + skipped); counts: {"dup": n}.
+    - total: so video xet (items + skipped); counts: {"dup": n, "dead_page": n}.
     """
     import random
     rng = opts.get("rng") or random
     shuffle = bool(opts.get("shuffle", True))
     manual_files = opts.get("manual_files") or {}
+    live_ids = opts.get("live_page_ids")  # set | None
     comments_all = store.load_text_lines(Path(tool_root) / "comments.txt")
     _log = log or (lambda *a, **k: None)
 
@@ -171,6 +192,18 @@ def plan_upload_pages(tool_root, pages, opts, runlog, caption_resolver, log=None
                 _log(f"[{page['name']}] edited/ trống — dùng file nhập tay: {Path(manual).name}")
         if not vids:
             _log(f"[{page['name']}] Không có video trong edited/ — bỏ qua page.")
+            continue
+        # Page chet (khong con trong /me/accounts): bo qua toan bo video,
+        # khong thu upload — de run tiep tuc page khac, khong dung dot.
+        if live_ids is not None and str(page["id"]) not in live_ids:
+            for vp in vids:
+                fh = file_hash(vp)
+                entry = {"page_id": page["id"], "page_name": page["name"],
+                         "folder": page["folder"], "video_path": vp,
+                         "video_name": Path(vp).name, "file_hash": fh,
+                         "reason": "dead_page"}
+                skipped.append(entry)
+                queue.append(dict(entry, action="skip"))
             continue
         if shuffle:
             rng.shuffle(vids)
@@ -193,7 +226,8 @@ def plan_upload_pages(tool_root, pages, opts, runlog, caption_resolver, log=None
                         caption_pool=list(captions), comment_pool=list(comments))
             items.append(item)
             queue.append(dict(item, action="upload"))
-    counts = {"dup": sum(1 for s in skipped if s["reason"] == "dup")}
+    counts = {"dup": sum(1 for s in skipped if s["reason"] == "dup"),
+              "dead_page": sum(1 for s in skipped if s["reason"] == "dead_page")}
     return {"items": items, "skipped": skipped, "queue": queue,
             "total": len(queue), "counts": counts}
 
@@ -203,7 +237,8 @@ def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolv
     """Dieu phoi dot upload nhieu page.
     pages: [{id, name, folder, dir, token}] (token da lam moi truoc).
     opts: gap, comment_delay, big_first, shuffle,
-          stop_on_checkpoint, backoff_minutes, manual_files {folder: path}, rng.
+          stop_on_checkpoint, backoff_minutes, manual_files {folder: path}, rng,
+          live_page_ids (set id page con song, hoac None = khong kiem tra).
     caption_resolver(page_dir) -> (captions, comments, nguon_caption).
     overrides: {(page_id, video_path): (caption, comment)} — dung dung gia tri
           da sua o man Xem truoc thay vi boc ngau nhien (mac dinh: khong co).
@@ -211,6 +246,10 @@ def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolv
           upload, khong tinh loi, ghi run-log "skipped_user".
     plan: ke hoach co san tu plan_upload_pages (man Xem truoc truyen vao de
           thu tu + caption hien dung nhu da xem; mac dinh: lap moi).
+    Page chet (khong nam trong live_page_ids) thi video cua no duoc ghi
+    "skipped_dead_page" va dot chay TIEP TUC page khac — khong dung dot,
+    khong dat backoff. Page song ma loi token/checkpoint/429 thi van DUNG
+    dot nhu cu.
     Tra summary dict (co stopped/stop_kind/stop_page/stop_video khi dung khan)."""
     import random
     m = load(tool_root)
@@ -260,6 +299,7 @@ def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolv
         plan = plan_upload_pages(tool_root, pages, opts, runlog, caption_resolver,
                                  log=ctx.log)
     queue = plan["queue"]
+    dead_logged = set()  # chi log 1 dong cho moi page chet (khong spam theo video)
     for qi, entry in enumerate(queue):
         if stopped or ctx.is_stopped():
             break
@@ -270,10 +310,19 @@ def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolv
         total += 1
         if entry["action"] == "skip":
             skipped += 1
-            ctx.progress(total - 1, None, f"Đang upload {entry['video_name']} ({entry['page_name']})")
-            ctx.log(f"[BỎ QUA] {entry['video_name']}: đã đăng rồi (chống trùng).")
-            runlog.record_upload(run_id, entry["page_id"], entry["folder"], vp, fh,
-                                "", "", "", "skipped_dup")
+            if entry.get("reason") == "dead_page":
+                if entry["page_id"] not in dead_logged:
+                    dead_logged.add(entry["page_id"])
+                    ctx.log(f"[BỎ QUA] {entry['page_name']}: page không còn trong tài khoản "
+                            f"Facebook — bỏ qua, đợt chạy tiếp tục. Nên xóa page này khỏi "
+                            f"tool (màn Page → Xóa page).")
+                runlog.record_upload(run_id, entry["page_id"], entry["folder"], vp, fh,
+                                    "", "", "", "skipped_dead_page")
+            else:
+                ctx.progress(total - 1, None, f"Đang upload {entry['video_name']} ({entry['page_name']})")
+                ctx.log(f"[BỎ QUA] {entry['video_name']}: đã đăng rồi (chống trùng).")
+                runlog.record_upload(run_id, entry["page_id"], entry["folder"], vp, fh,
+                                    "", "", "", "skipped_dup")
             continue
         # Video trong ke hoach: co the bi bo qua / sua caption-comment o man Xem truoc
         cap, cmt = overrides.get(key, (entry["caption"], entry["comment"]))

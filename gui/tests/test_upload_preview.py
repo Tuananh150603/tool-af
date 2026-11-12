@@ -102,7 +102,7 @@ def test_plan_khong_gioi_han_video(pages_with_token, monkeypatch, tmp_path):
         fx["root"], pages, _opts(), log, _resolver(fx["root"]))
     assert len(plan["items"]) == 2
     assert [i["video_name"] for i in plan["items"]] == ["vid1.mp4", "vid2.mp4"]
-    assert plan["counts"] == {"dup": 0}
+    assert plan["counts"] == {"dup": 0, "dead_page": 0}
     assert plan["total"] == 2
     ctx = FakeCtx()
     s = upload_adapter.run_upload_pages(
@@ -125,7 +125,7 @@ def test_plan_dedup_video_da_dang(pages_with_token, monkeypatch, tmp_path):
     plan = upload_adapter.plan_upload_pages(
         fx["root"], pages, _opts(), log, _resolver(fx["root"]))
     assert plan["items"] == []
-    assert plan["counts"] == {"dup": 2}
+    assert plan["counts"] == {"dup": 2, "dead_page": 0}
     assert plan["total"] == 2
     assert len(log.data["uploads"]) == before  # plan khong ghi run-log
 

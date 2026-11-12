@@ -179,7 +179,7 @@ class UploadView(BaseView):
             self._plan_error = str(e)
             self.app.log(f"Không lập được kế hoạch upload: {e}")
             return {"items": [], "skipped": [], "queue": [], "total": 0,
-                    "counts": {"dup": 0}}
+                    "counts": {"dup": 0, "dead_page": 0}}
 
     def _row_status(self, page, item, skip_reason):
         """(text, mau) cho cot Trang thai cua 1 dong — ly do o nhap bi khoa
@@ -190,6 +190,8 @@ class UploadView(BaseView):
             return "Sẽ đăng", COLORS["success"]
         if skip_reason == "dup":
             return "Video này đã đăng rồi", COLORS["text_muted"]
+        if skip_reason == "dead_page":
+            return "Page đã chết — sẽ bỏ qua", COLORS["warning"]
         return "Không có video", COLORS["text_muted"]
 
     def _render_table(self, pages, by_page, skipped_by_page):
@@ -318,6 +320,19 @@ class UploadView(BaseView):
         self.app.run_task("upload", self._do_upload, pages, opts, overrides)
 
     def _do_upload(self, ctx, pages, opts, overrides=None):
+        # Kiem tra page nao con song theo /me/accounts (chay tren worker
+        # thread de khong dong bang UI). Page chet se bi bo qua, dot chay
+        # tiep tuc page khac; khong kiem tra duoc thi chay nhu cu.
+        live_ids = upload_adapter.fetch_live_page_ids(
+            self.app.config.tool_root, self.app.config.get("user_token", ""))
+        if live_ids is not None:
+            opts = dict(opts)
+            opts["live_page_ids"] = live_ids
+            ctx.log(f"Đã kiểm tra page còn sống: {len(live_ids)} page — "
+                    f"page chết sẽ bị bỏ qua, đợt chạy tiếp tục.")
+        else:
+            ctx.log("Không kiểm tra được page còn sống (không có User Token "
+                    "hoặc mất mạng) — chạy như cũ.")
         summary = upload_adapter.run_upload_pages(
             self.app.config.tool_root, pages, opts, self.app.runlog,
             ctx.run_id, ctx,

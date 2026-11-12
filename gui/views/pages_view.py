@@ -1,12 +1,14 @@
-"""Quan ly Page: quet page, kiem tra token, sua tag ngach."""
+"""Quan ly Page: quet page, kiem tra token, sua tag ngach, xoa page chet."""
+from pathlib import Path
+
 import customtkinter as ctk
 
 from gui.adapters import upload_adapter
 from gui.core import store
-from gui.theme import COLORS, PAD
-from gui.views.common import (BaseView, clear_frame, data_table, ghost_button,
-                              heading, labeled_entry, muted, primary_button,
-                              title)
+from gui.theme import COLORS, FONTS, PAD, PAD_SMALL
+from gui.views.common import (BaseView, clear_frame, danger_button,
+                              ghost_button, heading, labeled_entry, muted,
+                              pill, primary_button, title)
 
 
 def build_model(tool_root, pool_root, token_status=None):
@@ -21,7 +23,9 @@ class PagesView(BaseView):
     def __init__(self, parent, app):
         super().__init__(parent, app)
         title(self, "Quản lý Page").pack(anchor="w", padx=PAD, pady=(PAD, 4))
-        muted(self, "Quét Page từ User Token, kiểm tra token từng page, gán tag ngách.").pack(
+        muted(self, "Quét Page từ User Token, kiểm tra token từng page, gán tag ngách. "
+                     "Page chết thì bấm Xóa page ở từng dòng — thư mục được chuyển "
+                     "vào pages_deleted/ để khôi phục được, không xóa hẳn.").pack(
             anchor="w", padx=PAD, pady=(0, PAD))
         bar = ctk.CTkFrame(self, fg_color="transparent")
         bar.pack(fill="x", padx=PAD, pady=(0, PAD))
@@ -61,6 +65,8 @@ class PagesView(BaseView):
         ghost_button(row, "Lưu tag", self.on_save_niche).pack(side="left", padx=(10, 0))
         self.table_wrap = ctk.CTkFrame(self, fg_color="transparent")
         self.table_wrap.pack(fill="both", expand=True, padx=PAD, pady=(0, PAD))
+        # Moi dong bang: {folder, name, delete_button}
+        self._rows = []
 
     def refresh(self):
         model = build_model(self.app.config.tool_root, self.app.config.pool_root,
@@ -72,21 +78,67 @@ class PagesView(BaseView):
         if folders and not self.page_menu_var.get():
             self.page_menu_var.set(folders[0])
         clear_frame(self.table_wrap)
+        self._rows = []
         heading(self.table_wrap, f"Pages ({len(pages)})").pack(anchor="w", pady=(0, 8))
-        cols = [("Page", 240), ("ID", 160), ("Kênh", 150), ("Ngách", 120),
-                ("Token file", 90), ("Token", 150), ("Trạng thái", 130)]
-        rows = []
-        for p in pages:
-            rows.append([
-                p["name"], p["id"], p["channel"] or "—", p["niche"] or "—",
-                "Có" if p["has_token"] else "Không",
-                ("pill", "token_" + p["token_status"]),
-                ("pill", p["status"]),
-            ])
-        if rows:
-            data_table(self.table_wrap, cols, rows).pack(fill="both", expand=True)
-        else:
+        if not pages:
             muted(self.table_wrap, "Không có page nào khớp bộ lọc.").pack(anchor="w")
+            return
+        cols = [("Page", 240), ("ID", 160), ("Kênh", 150), ("Ngách", 120),
+                ("Token file", 90), ("Token", 150), ("Trạng thái", 130), ("", 90)]
+        header = ctk.CTkFrame(self.table_wrap, fg_color=COLORS["bg_hover"], corner_radius=6)
+        header.pack(fill="x", pady=2)
+        for ci, (text, w) in enumerate(cols):
+            ctk.CTkLabel(header, text=text, font=ctk.CTkFont(*FONTS["small_bold"]),
+                         text_color=COLORS["text"], width=w, anchor="w").grid(
+                             row=0, column=ci, padx=PAD_SMALL, pady=6, sticky="w")
+        for ri, p in enumerate(pages):
+            bg = COLORS["bg_row_alt"] if ri % 2 else COLORS["bg_card"]
+            fr = ctk.CTkFrame(self.table_wrap, fg_color=bg, corner_radius=6)
+            fr.pack(fill="x", pady=2)
+            cells = [
+                (p["name"], 240), (p["id"], 160), (p["channel"] or "—", 150),
+                (p["niche"] or "—", 120),
+                ("Có" if p["has_token"] else "Không", 90),
+            ]
+            for ci, (text, w) in enumerate(cells):
+                ctk.CTkLabel(fr, text=text, font=ctk.CTkFont(*FONTS["body"]),
+                             text_color=COLORS["text"], width=w, anchor="w").grid(
+                                 row=0, column=ci, padx=PAD_SMALL, pady=6, sticky="w")
+            pill(fr, "token_" + p["token_status"]).grid(
+                row=0, column=5, padx=PAD_SMALL, pady=6, sticky="w")
+            pill(fr, p["status"]).grid(
+                row=0, column=6, padx=PAD_SMALL, pady=6, sticky="w")
+            row = {"folder": p["folder"], "name": p["name"]}
+            btn = danger_button(fr, "Xóa page",
+                                lambda f=p["folder"], n=p["name"]: self.on_delete_page(f, n))
+            btn.grid(row=0, column=7, padx=PAD_SMALL, pady=6)
+            row["delete_button"] = btn
+            self._rows.append(row)
+
+    def on_delete_page(self, folder, name):
+        """Xoa page chet khoi tool: hoi xac nhan, chuyen thu muc page sang
+        pages_deleted/ (khong xoa han), ghi su kien vao run-log, lam moi."""
+        from tkinter import messagebox
+        page_dir = Path(self.app.config.tool_root) / "pages" / folder
+        n_edited = store.count_videos(page_dir / "edited")
+        if not messagebox.askyesno(
+                "Xóa page khỏi tool",
+                f"Xóa page '{name}' ({folder}) khỏi tool?\n\n"
+                f"Thư mục page sẽ được CHUYỂN sang pages_deleted/ (không xóa hẳn — "
+                f"muốn khôi phục thì chuyển thư mục đó về lại pages/). "
+                f"Page sẽ biến khỏi Dashboard, Upload, Link Pool.\n"
+                f"Video đã edit trong page: {n_edited}."):
+            return
+        try:
+            dest = store.delete_page(self.app.config.tool_root, folder)
+        except ValueError as e:
+            self.app.log(f"Không xóa được page {folder}: {e}")
+            return
+        self.app.log(f"Đã xóa page {name} ({folder}) — đã chuyển vào {dest.name}.")
+        self.app.runlog.record_event(
+            "page_delete", f"Đã xóa page {name} ({folder})",
+            {"page": folder, "dest": dest.name})
+        self.refresh()
 
     # ---- actions (chay tren thread rieng qua app.run_task) ----
     def on_scan(self):
