@@ -5,6 +5,7 @@ Token user luu o day + dong bo sang page_tok.txt de CLI goc van dung duoc.
 """
 import copy
 import json
+import sys
 from pathlib import Path
 
 CONFIG_FILENAME = "gui_config.json"
@@ -51,9 +52,33 @@ DEFAULTS = {
 }
 
 
+def _looks_like_tool_root(path):
+    """Thu muc goc cua tool: chua Uploadvideo_multipage.py hoac thu muc pages/."""
+    p = Path(path)
+    return (p / "Uploadvideo_multipage.py").is_file() or (p / "pages").is_dir()
+
+
 def default_tool_root():
-    """Thu muc goc cua tool = thu muc cha cua gui/."""
-    return str(Path(__file__).resolve().parents[2])
+    """Thu muc goc cua tool.
+
+    - Chay bang Python: thu muc cha cua gui/ (gui/core/config.py -> parents[2]).
+    - Chay bang .exe dong goi (PyInstaller onefile): __file__ nam trong thu muc
+      tam _MEI (bi xoa khi thoat) nen KHONG dung duoc — lay thu muc chua file
+      .exe (sys.executable) roi di nguoc len toi da 3 cap de tim thu muc chua
+      Uploadvideo_multipage.py / pages/.
+    """
+    if getattr(sys, "frozen", False):
+        start = Path(sys.executable).resolve().parent
+    else:
+        start = Path(__file__).resolve().parents[2]
+    cur = start
+    for _ in range(4):
+        if _looks_like_tool_root(cur):
+            return str(cur)
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    return str(start)
 
 
 class Config:
@@ -66,6 +91,10 @@ class Config:
             self._deep_merge(data)
         if not self.data.get("tool_root"):
             self.data["tool_root"] = default_tool_root()
+        # Nho tool_root luc khoi tao: save() chi doi file khi tool_root
+        # bi doi sau do (vd Han doi trong Cai dat); neu khong doi thi ghi
+        # dung vao self.path (ke ca khi path duoc truyen tuong minh).
+        self._constructed_tool_root = self.data.get("tool_root")
 
     def _deep_merge(self, src):
         for k, v in src.items():
@@ -74,23 +103,38 @@ class Config:
             else:
                 self.data[k] = copy.deepcopy(v)
 
+    @staticmethod
+    def _read_file(path):
+        if not path.is_file():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
     @classmethod
     def load(cls, tool_root=None):
         root = Path(tool_root) if tool_root else Path(default_tool_root())
-        path = root / CONFIG_FILENAME
-        data = None
-        if path.is_file():
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                data = None
-        cfg = cls(data, path=path)
+        data = cls._read_file(root / CONFIG_FILENAME)
+        # Ton trong tool_root da luu (Han doi trong Cai dat): neu thu muc do
+        # ton tai thi dung no, ke ca khi file config dang nam o cho khac.
+        saved_root = (data or {}).get("tool_root")
+        if saved_root and Path(saved_root).is_dir() and Path(saved_root) != root:
+            root = Path(saved_root)
+            data2 = cls._read_file(root / CONFIG_FILENAME)
+            if data2 is not None:
+                data = data2
+        cfg = cls(data, path=root / CONFIG_FILENAME)
         cfg.data["tool_root"] = str(root)
         return cfg
 
     def save(self):
-        if self.path is None:
+        # Chi doi file khi tool_root bi doi sau luc khoi tao (Han doi trong
+        # Cai dat thi file config phai di theo sang thu muc moi). Neu khong
+        # doi thi ghi dung vao self.path (ke ca path truyen tuong minh).
+        if self.path is None or self.data.get("tool_root") != self._constructed_tool_root:
             self.path = Path(self.data["tool_root"]) / CONFIG_FILENAME
+            self._constructed_tool_root = self.data.get("tool_root")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), encoding="utf-8")

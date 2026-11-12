@@ -62,3 +62,67 @@ def test_pipeline_params_merge(tmp_path):
     cfg.data["pipeline"]["speed"] = 1.06
     assert cfg.pipeline_params["speed"] == 1.06
     assert cfg.pipeline_params["crop_w"] == 0.94  # phan con lai giu mac dinh
+
+
+# --- Hoi quy: .exe dong goi (PyInstaller onefile) phai tim dung tool root ---
+# Truoc day default_tool_root() dung __file__ -> trong .exe __file__ nam trong
+# thu muc tam _MEI (bi xoa khi thoat) nen app khong thay pages/ + token.
+import sys
+from pathlib import Path
+from gui.core.config import default_tool_root
+
+
+def _fake_frozen(monkeypatch, exe_path):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe_path), raising=False)
+
+
+def test_frozen_exe_dat_trong_tool_root(monkeypatch, tmp_path):
+    (tmp_path / "Uploadvideo_multipage.py").write_text("x", encoding="utf-8")
+    (tmp_path / "pages").mkdir()
+    exe = tmp_path / "ToolAF.exe"
+    exe.write_text("fake exe", encoding="utf-8")
+    _fake_frozen(monkeypatch, exe)
+    assert default_tool_root() == str(tmp_path)
+
+
+def test_frozen_exe_trong_gui_dist_di_nguoc_len_tim_tool_root(monkeypatch, tmp_path):
+    (tmp_path / "Uploadvideo_multipage.py").write_text("x", encoding="utf-8")
+    dist = tmp_path / "gui" / "dist"
+    dist.mkdir(parents=True)
+    exe = dist / "ToolAF.exe"
+    exe.write_text("fake exe", encoding="utf-8")
+    _fake_frozen(monkeypatch, exe)
+    assert default_tool_root() == str(tmp_path)
+
+
+def test_frozen_exe_khong_tim_thay_tool_root_tra_ve_thu_muc_exe(monkeypatch, tmp_path):
+    exe = tmp_path / "ToolAF.exe"
+    exe.write_text("fake exe", encoding="utf-8")
+    _fake_frozen(monkeypatch, exe)
+    assert default_tool_root() == str(tmp_path)
+
+
+def test_load_ton_trong_tool_root_da_luu(tmp_path):
+    import json
+    root_a = tmp_path / "A"
+    (root_a / "pages").mkdir(parents=True)
+    root_b = tmp_path / "B"
+    root_b.mkdir()
+    (root_b / "gui_config.json").write_text(
+        json.dumps({"tool_root": str(root_a)}), encoding="utf-8")
+    cfg = Config.load(root_b)
+    assert cfg.tool_root == str(root_a)
+
+
+def test_save_ghi_vao_tool_root_moi(tmp_path):
+    root_a = tmp_path / "A"
+    root_a.mkdir()
+    root_b = tmp_path / "B"
+    root_b.mkdir()
+    cfg = Config(path=root_a / "gui_config.json")
+    cfg.set("tool_root", str(root_b))
+    cfg.save()
+    assert (root_b / "gui_config.json").is_file()
+    cfg2 = Config.load(root_b)
+    assert cfg2.tool_root == str(root_b)
