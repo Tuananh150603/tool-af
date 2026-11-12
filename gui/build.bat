@@ -1,7 +1,7 @@
 @echo off
 REM Build Tool AF GUI thanh file .exe chay tren Windows 10/11.
 REM Chay file nay 1 lan tren may Han (bam dup build.bat trong thu muc gui\).
-REM Ket qua: gui\dist\ToolAF.exe — copy file .exe ra cho nao cung chay duoc,
+REM Ket qua: gui\dist\ToolAF.exe - copy file .exe ra cho nao cung chay duoc,
 REM mien la cung may (du lieu page/pool nam o tool root + pool root da cau hinh).
 setlocal
 
