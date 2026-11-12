@@ -10,7 +10,7 @@ cd /d %~dp0
 echo [1/4] Kiem tra Python...
 python --version >nul 2>&1
 if errorlevel 1 (
-  echo [!] Chua cai Python. Cai Python 3.10+ tu python.org (tick "Add python to PATH") roi chay lai.
+  echo [!] Chua cai Python. Cai Python 3.10+ tu python.org, nho tick "Add python to PATH", roi chay lai.
   pause
   exit /b 1
 )
