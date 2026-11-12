@@ -43,7 +43,7 @@ python app.py
 | 3 | Link Pool | Xem trước gán kênh (**dry-run, không ghi file**) / Áp dụng gán / Gán tay / Gỡ gán — STRICT 1-1, FIFO |
 | 4 | Kênh nguồn | Thêm/xóa kênh Douyin trong pool, xem kênh nào chưa gán |
 | 5 | Xử lý video | Pipeline FFmpeg: chỉnh thông số (tốc độ, crop, contrast, noise...), **dao động nhẹ mỗi video** (tắt mặc định), xem trước video đã edit, chọn tất cả/1 page |
-| 6 | Upload | Chọn 1 page hoặc tất cả, xáo trộn, nghỉ giữa video (10s), chờ trước khi comment (15s), simple/resumable, nhập tay 1 file khi edited/ trống, **Tiếp tục đợt dở**, **sửa caption/comment ngay trong bảng**: mỗi dòng page có ô Caption + Comment điền sẵn giá trị planner sẽ dùng cho video tiếp theo của page đó (chỉ page có video sẽ đăng mới sửa được), nút **Đổi** bốc lại ngẫu nhiên từ đúng kho của page đó, nút Upload chạy với đúng giá trị đang hiện trong bảng; cột **Trạng thái** luôn ghi rõ lý do dòng nào không đăng được (`Sẽ đăng` / `Đã đủ 1 video hôm nay` / `Video này đã đăng rồi` / `Không có video`), lỗi lập kế hoạch hiện ngay trên màn hình thay vì bảng trống không lời giải thích |
+| 6 | Upload | Chọn 1 page hoặc tất cả, xáo trộn, nghỉ giữa video (10s), chờ trước khi comment (15s), simple/resumable, nhập tay 1 file khi edited/ trống, **Tiếp tục đợt dở**, **sửa caption/comment ngay trong bảng**: mỗi dòng page có ô Caption + Comment điền sẵn giá trị planner sẽ dùng cho video tiếp theo của page đó (chỉ page có video sẽ đăng mới sửa được), nút **Đổi** bốc lại ngẫu nhiên từ đúng kho của page đó, nút Upload chạy với đúng giá trị đang hiện trong bảng; cột **Trạng thái** luôn ghi rõ lý do dòng nào không đăng được (`Sẽ đăng` / `Video này đã đăng rồi` / `Không có video`), lỗi lập kế hoạch hiện ngay trên màn hình thay vì bảng trống không lời giải thích |
 | 7 | Caption & Comment | Sửa kho caption chung (47 dòng) / comment chung (100 dòng), xem **link Shopee nào đang xoay vòng** (hiện 3 link) + thêm link mới, caption riêng từng page |
 | 8 | Nhạc nền | Thêm/xóa file nhạc trong `bgm/`, bật/tắt trộn nhạc, xem mức trộn (0.18) |
 | 9 | Lịch sử | Nhật ký edit/upload/sự kiện an toàn (file JSON local), tóm tắt từng đợt chạy |
@@ -51,28 +51,25 @@ python app.py
 | 11 | Hẹn giờ | Chạy tự động mỗi ngày theo giờ hẹn (khi app đang mở): edit xoay vòng rồi upload |
 | 12 | Cài đặt | Tool root, pool root, User Token, **FFmpeg đang dùng (nguồn + phiên bản)**, các công tắc an toàn |
 
-## 7 mục bổ sung (lượt rà soát cuối)
+## 6 mục bổ sung (lượt rà soát cuối)
 
 1. **Dừng khi gặp checkpoint / rate-limit (mặc định BẬT):** tool gốc chỉ in
    lỗi rồi chạy tiếp. GUI tự dừng toàn bộ đợt chạy khi Facebook trả checkpoint,
    khóa tài khoản, 429 hoặc token hết hạn; hiện **banner đỏ** ghi rõ lý do +
    page/video đang chạy dở; ghi sự kiện vào Lịch sử; **không tự chạy lại** —
-   chỉ chạy tiếp khi Han bấm tay.
-2. **Giới hạn số video/ngày (mặc định BẬT, 1 video/page/ngày):** đúng nhịp vận
-   hành của Han. Dashboard hiện "đã đăng hôm nay x/1" từng page. Khi API trả
-   429 thì đặt **backoff** (mặc định 15 phút) — trong thời gian backoff, chạy
-   tay vẫn được nhưng app cảnh báo.
-3. **Caption theo ngách từng page (mặc định TẮT = dùng chung như cũ):** page
+   chỉ chạy tiếp khi Han bấm tay. Khi API trả 429 thì đặt **backoff** (mặc
+   định 15 phút) — trong thời gian backoff, chạy tay vẫn được nhưng app cảnh báo.
+2. **Caption theo ngách từng page (mặc định TẮT = dùng chung như cũ):** page
    nào có file `captions_gui.txt` riêng thì dùng kho đó; không có thì dùng kho
    theo tag ngách (`gui_data/caption_pools/<tag>.txt`); chưa có nữa thì về kho
    chung.
-4. **Ngẫu nhiên nhẹ thông số xử lý (mặc định TẮT):** mọi video đang qua đúng 1
+3. **Ngẫu nhiên nhẹ thông số xử lý (mặc định TẮT):** mọi video đang qua đúng 1
    công thức cố định nên dễ bị bắt mẫu. Khi bật, mỗi video lấy mẫu ngẫu nhiên
    trong khoảng Han chỉnh được (vd tốc độ 1.03–1.06, contrast 1.02–1.06).
-5. **Dọn dữ liệu cũ:** xem mục 10 ở trên.
-6. **Tìm kiếm / lọc page:** ô tìm kiếm + lọc theo trạng thái trên Dashboard và
+4. **Dọn dữ liệu cũ:** xem mục 10 ở trên.
+5. **Tìm kiếm / lọc page:** ô tìm kiếm + lọc theo trạng thái trên Dashboard và
    màn Page (chuẩn bị lên 50 page).
-7. **Hiển thị FFmpeg đang dùng:** trong Cài đặt — nguồn (FFMPEG_BIN /
+6. **Hiển thị FFmpeg đang dùng:** trong Cài đặt — nguồn (FFMPEG_BIN /
    imageio-ffmpeg / PATH / chỉ tay) + phiên bản + cho phép chỉ đường dẫn tay.
 
 ## An toàn (bắt buộc, đã cài trong code)
@@ -130,7 +127,7 @@ gui/
   core/                  # logic thuần (test được headless, không cần màn hình)
     config.py            # gui_config.json (local, gitignore)
     store.py             # đọc/ghi pages/, pool, captions, comments, bgm, legacy
-    runlog.py            # gui_runlog.json: chống trùng, tiếp tục, giới hạn/ngày
+    runlog.py            # gui_runlog.json: chống trùng, tiếp tục
     safety.py            # phân loại lỗi FB: checkpoint / rate-limit / token
     pipeline.py          # dao động nhẹ (jitter) thông số xử lý
     ffmpeg.py            # tìm FFmpeg + phiên bản

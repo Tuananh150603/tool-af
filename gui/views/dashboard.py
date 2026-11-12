@@ -93,7 +93,7 @@ class DashboardView(BaseView):
                 p["channel"] or "—",
                 str(p["pool_count"]),
                 str(p["edited_count"]),
-                f"{p['today']}/{self.app.config.get('daily_cap_per_page', 1)}",
+                f"{p['today']}",
                 ("pill", p["status"]),
             ])
         if rows:

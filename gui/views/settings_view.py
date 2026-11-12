@@ -1,4 +1,4 @@
-"""Cai dat: duong dan, token, FFmpeg, gioi han/ngay, jitter, an toan."""
+"""Cai dat: duong dan, token, FFmpeg, jitter, an toan."""
 from pathlib import Path
 
 import customtkinter as ctk
@@ -67,15 +67,8 @@ class SettingsView(BaseView):
         ctk.CTkCheckBox(safe, text="Dừng đợt chạy khi gặp checkpoint / khóa / rate-limit (429)",
                         variable=self.stop_var, fg_color=COLORS["accent"],
                         text_color=COLORS["text"]).pack(anchor="w", padx=PAD, pady=2)
-        self.cap_var = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(safe, text="Giới hạn số video đăng mỗi page mỗi ngày",
-                        variable=self.cap_var, fg_color=COLORS["accent"],
-                        text_color=COLORS["text"]).pack(anchor="w", padx=PAD, pady=2)
         row = ctk.CTkFrame(safe, fg_color="transparent")
         row.pack(fill="x", padx=PAD, pady=(0, 4))
-        cap_frame, self.cap_entry = labeled_entry(row, "Trần video / page / ngày", "1")
-        self.cap_entry.configure(width=100)
-        cap_frame.pack(side="left", padx=(0, 10))
         backoff_frame, self.backoff_entry = labeled_entry(row, "Backoff sau 429 (phút)", "15")
         self.backoff_entry.configure(width=120)
         backoff_frame.pack(side="left")
@@ -119,9 +112,6 @@ class SettingsView(BaseView):
         self.ff_entry.delete(0, "end")
         self.ff_entry.insert(0, c.get("ffmpeg_bin", ""))
         self.stop_var.set(bool(c.get("stop_on_checkpoint", True)))
-        self.cap_var.set(bool(c.get("daily_cap_enabled", True)))
-        self.cap_entry.delete(0, "end")
-        self.cap_entry.insert(0, str(c.get("daily_cap_per_page", 1)))
         self.backoff_entry.delete(0, "end")
         self.backoff_entry.insert(0, str(c.get("rate_limit_backoff_minutes", 15)))
         self.del_var.set(bool(c.get("delete_source_after_edit", False)))
@@ -181,11 +171,6 @@ class SettingsView(BaseView):
         c.set("user_token", token)
         c.set("ffmpeg_bin", self.ff_entry.get().strip())
         c.set("stop_on_checkpoint", self.stop_var.get())
-        c.set("daily_cap_enabled", self.cap_var.get())
-        try:
-            c.set("daily_cap_per_page", max(1, int(self.cap_entry.get() or 1)))
-        except Exception:
-            c.set("daily_cap_per_page", 1)
         try:
             c.set("rate_limit_backoff_minutes", max(1, int(self.backoff_entry.get() or 15)))
         except Exception:

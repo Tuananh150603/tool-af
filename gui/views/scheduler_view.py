@@ -27,8 +27,7 @@ class SchedulerView(BaseView):
     def __init__(self, parent, app):
         super().__init__(parent, app)
         title(self, "Hẹn giờ chạy tự động").pack(anchor="w", padx=PAD, pady=(PAD, 4))
-        muted(self, "App đang mở sẽ tự chạy edit + upload vào giờ hẹn mỗi ngày "
-                     "(1 video/page/ngày theo trần đã đặt).").pack(
+        muted(self, "App đang mở sẽ tự chạy edit + upload vào giờ hẹn mỗi ngày.").pack(
             anchor="w", padx=PAD, pady=(0, PAD))
         card = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=10)
         card.pack(fill="x", padx=PAD, pady=(0, PAD))

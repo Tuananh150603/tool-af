@@ -4,7 +4,6 @@ An toan (mac dinh BAT, theo cai dat):
 - Dung TOAN BO dot chay khi Facebook tra checkpoint / khoa / 429 / token
   het han; ghi su kien vao run-log + dat backoff (voi 429); KHONG tu chay
   lai — chi chay tiep khi Han bam tay.
-- Gioi han video/ngay: mac dinh 1 video/page/ngay (nhip cua Han).
 - Chong trung: khong upload lai file da co fb_video_id trong run-log.
 - Tiep tuc: ghi entry 'pending' truoc khi upload, cap nhat sau.
 """
@@ -141,23 +140,21 @@ def plan_upload_pages(tool_root, pages, opts, runlog, caption_resolver, log=None
     """Lap ke hoach upload (KHONG upload, KHONG ghi run-log).
 
     Day la DUONG CHON DUY NHAT: run_upload_pages cung chay qua ham nay, nen
-    video xem truoc thay dung la video se dang (cung thu tu, cung cap/dedup).
+    video xem truoc thay dung la video se dang (cung thu tu, cung dedup).
     pages: [{id, name, folder, dir, token}].
-    opts: gap, comment_delay, big_first, shuffle, cap_enabled, cap_per_page,
+    opts: gap, comment_delay, big_first, shuffle,
           manual_files {folder: path}, rng.
     caption_resolver(page_dir) -> (captions, comments, nguon_caption).
     Tra {"items", "skipped", "queue", "total", "counts"}:
     - items: [{page_id, page_name, folder, page_dir, video_path, video_name,
                caption, comment, file_hash, caption_pool, comment_pool}]
     - skipped: [{page_id, page_name, folder, video_path, video_name,
-                 reason ("dup"|"cap"), file_hash}]
+                 reason ("dup"), file_hash}]
     - queue: cac quyet dinh "upload"/"skip" theo dung thu tu run xu ly.
-    - total: so video xet (items + skipped); counts: {"dup": n, "cap": n}.
+    - total: so video xet (items + skipped); counts: {"dup": n}.
     """
     import random
     rng = opts.get("rng") or random
-    cap_enabled = bool(opts.get("cap_enabled", True))
-    cap_per_page = int(opts.get("cap_per_page", 1))
     shuffle = bool(opts.get("shuffle", True))
     manual_files = opts.get("manual_files") or {}
     comments_all = store.load_text_lines(Path(tool_root) / "comments.txt")
@@ -180,7 +177,6 @@ def plan_upload_pages(tool_root, pages, opts, runlog, caption_resolver, log=None
         captions, comments, cap_src = caption_resolver(page["dir"])
         captions = captions or store.load_text_lines(Path(tool_root) / "captions.txt")
         comments = comments or comments_all
-        planned_today = runlog.uploads_today(page["id"])
         for vp in vids:
             fh = file_hash(vp)
             base = {"page_id": page["id"], "page_name": page["name"],
@@ -191,20 +187,13 @@ def plan_upload_pages(tool_root, pages, opts, runlog, caption_resolver, log=None
                 skipped.append(entry)
                 queue.append(dict(entry, action="skip"))
                 continue
-            if cap_enabled and planned_today >= cap_per_page:
-                entry = dict(base, reason="cap")
-                skipped.append(entry)
-                queue.append(dict(entry, action="skip"))
-                break  # het tran ngay cua page nay -> sang page khac
             cap = rng.choice(captions) if captions else ""
             cmt = rng.choice(comments) if comments else ""
             item = dict(base, page_dir=page["dir"], caption=cap, comment=cmt,
                         caption_pool=list(captions), comment_pool=list(comments))
             items.append(item)
             queue.append(dict(item, action="upload"))
-            planned_today += 1
-    counts = {"dup": sum(1 for s in skipped if s["reason"] == "dup"),
-              "cap": sum(1 for s in skipped if s["reason"] == "cap")}
+    counts = {"dup": sum(1 for s in skipped if s["reason"] == "dup")}
     return {"items": items, "skipped": skipped, "queue": queue,
             "total": len(queue), "counts": counts}
 
@@ -213,7 +202,7 @@ def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolv
                      overrides=None, skip=None, plan=None):
     """Dieu phoi dot upload nhieu page.
     pages: [{id, name, folder, dir, token}] (token da lam moi truoc).
-    opts: gap, comment_delay, big_first, shuffle, cap_enabled, cap_per_page,
+    opts: gap, comment_delay, big_first, shuffle,
           stop_on_checkpoint, backoff_minutes, manual_files {folder: path}, rng.
     caption_resolver(page_dir) -> (captions, comments, nguon_caption).
     overrides: {(page_id, video_path): (caption, comment)} — dung dung gia tri
@@ -229,7 +218,6 @@ def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolv
     gap = int(opts.get("gap", 10))
     comment_delay = int(opts.get("comment_delay", 15))
     big_first = bool(opts.get("big_first", False))
-    cap_per_page = int(opts.get("cap_per_page", 1))
     stop_on_checkpoint = bool(opts.get("stop_on_checkpoint", True))
     backoff_minutes = int(opts.get("backoff_minutes", 15))
     overrides = overrides or {}
@@ -283,14 +271,9 @@ def run_upload_pages(tool_root, pages, opts, runlog, run_id, ctx, caption_resolv
         if entry["action"] == "skip":
             skipped += 1
             ctx.progress(total - 1, None, f"Đang upload {entry['video_name']} ({entry['page_name']})")
-            if entry["reason"] == "dup":
-                ctx.log(f"[BỎ QUA] {entry['video_name']}: đã đăng rồi (chống trùng).")
-                runlog.record_upload(run_id, entry["page_id"], entry["folder"], vp, fh,
-                                    "", "", "", "skipped_dup")
-            else:
-                ctx.log(f"[BỎ QUA] {entry['page_name']}: đã đủ {cap_per_page} video hôm nay.")
-                runlog.record_upload(run_id, entry["page_id"], entry["folder"], vp, fh,
-                                    "", "", "", "skipped_cap")
+            ctx.log(f"[BỎ QUA] {entry['video_name']}: đã đăng rồi (chống trùng).")
+            runlog.record_upload(run_id, entry["page_id"], entry["folder"], vp, fh,
+                                "", "", "", "skipped_dup")
             continue
         # Video trong ke hoach: co the bi bo qua / sua caption-comment o man Xem truoc
         cap, cmt = overrides.get(key, (entry["caption"], entry["comment"]))

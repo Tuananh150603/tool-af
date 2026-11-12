@@ -86,32 +86,31 @@ def _resolver(tool_root):
 
 def _opts(**kw):
     o = {"gap": 0, "comment_delay": 0, "big_first": False, "shuffle": False,
-         "cap_enabled": False, "cap_per_page": 1, "stop_on_checkpoint": True,
+         "stop_on_checkpoint": True,
          "backoff_minutes": 15, "manual_files": {}, "rng": random.Random(0)}
     o.update(kw)
     return o
 
 
-# ---- (a) plan tra dung video run se dang ----
-def test_plan_ton_trong_cap_1_video_ngay(pages_with_token, monkeypatch, tmp_path):
+# ---- (a) plan tra dung video run se dang (khong gioi han so video) ----
+def test_plan_khong_gioi_han_video(pages_with_token, monkeypatch, tmp_path):
+    """Bo gioi han video/ngay: plan gom ca 2 video, run dang ca 2."""
     fx, pages = pages_with_token
     _patch_upload(monkeypatch, fx["root"])
     log = RunLog(tmp_path / "gui_runlog.json")
     plan = upload_adapter.plan_upload_pages(
-        fx["root"], pages, _opts(cap_enabled=True, cap_per_page=1),
-        log, _resolver(fx["root"]))
-    assert len(plan["items"]) == 1
-    assert plan["items"][0]["video_name"] == "vid1.mp4"
-    assert plan["counts"] == {"dup": 0, "cap": 1}
+        fx["root"], pages, _opts(), log, _resolver(fx["root"]))
+    assert len(plan["items"]) == 2
+    assert [i["video_name"] for i in plan["items"]] == ["vid1.mp4", "vid2.mp4"]
+    assert plan["counts"] == {"dup": 0}
     assert plan["total"] == 2
     ctx = FakeCtx()
     s = upload_adapter.run_upload_pages(
-        fx["root"], pages, _opts(cap_enabled=True, cap_per_page=1),
-        log, "r1", ctx, _resolver(fx["root"]))
-    assert s["ok"] == 1 and s["skipped"] == 1 and s["total"] == 2
+        fx["root"], pages, _opts(), log, "r1", ctx, _resolver(fx["root"]))
+    assert s["ok"] == 2 and s["skipped"] == 0 and s["total"] == 2
     ok_entry = [u for u in log.data["uploads"] if u["status"] == "ok"][0]
     assert ok_entry["file_path"] == plan["items"][0]["video_path"]
-    assert any(u["status"] == "skipped_cap" for u in log.data["uploads"])
+    assert not any(u["status"] == "skipped_cap" for u in log.data["uploads"])
 
 
 def test_plan_dedup_video_da_dang(pages_with_token, monkeypatch, tmp_path):
@@ -126,7 +125,7 @@ def test_plan_dedup_video_da_dang(pages_with_token, monkeypatch, tmp_path):
     plan = upload_adapter.plan_upload_pages(
         fx["root"], pages, _opts(), log, _resolver(fx["root"]))
     assert plan["items"] == []
-    assert plan["counts"] == {"dup": 2, "cap": 0}
+    assert plan["counts"] == {"dup": 2}
     assert plan["total"] == 2
     assert len(log.data["uploads"]) == before  # plan khong ghi run-log
 

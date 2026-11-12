@@ -20,8 +20,6 @@ DEFAULTS = {
     "delete_source_after_edit": False,   # mac dinh KHONG xoa video goc sau edit
     # --- An toan (mac dinh BAT) ---
     "stop_on_checkpoint": True,          # dung dot chay khi gap checkpoint/429/khoa
-    "daily_cap_enabled": True,           # gioi han video/ngay
-    "daily_cap_per_page": 1,             # nhip van hanh cua Han: 1 video/page/ngay
     "rate_limit_backoff_minutes": 15,    # 429 -> nghi toi thieu truoc khi chay tay lai
     # --- Doi hanh vi (mac dinh TAT = giu dung tool goc) ---
     "per_page_captions_enabled": False,  # caption rieng theo page/ngach

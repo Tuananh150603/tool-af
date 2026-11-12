@@ -4,8 +4,8 @@ Bang "Video chờ upload" sua duoc ngay trong bang: moi dong page co o nhap
 Caption + Comment dien san gia tri planner se dung cho video tiep theo cua
 page do, nut "Đổi" boc lai ngau nhien tu dung kho cua page do. Nut Upload
 chay voi dung gia tri dang hien trong bang (qua overrides). Cot "Trạng thái"
-luon ghi ro ly do dong nao khong dang duoc (het tran ngay / video da dang
-roi / khong co video); loi lap ke hoach hien ngay tren man hinh."""
+luon ghi ro ly do dong nao khong dang duoc (video da dang roi / khong co
+video); loi lap ke hoach hien ngay tren man hinh."""
 import random
 from pathlib import Path
 
@@ -119,8 +119,6 @@ class UploadView(BaseView):
             delay = 15
         return {"gap": gap, "comment_delay": delay,
                 "big_first": self.big_var.get(), "shuffle": self.shuffle_var.get(),
-                "cap_enabled": self.app.config.get("daily_cap_enabled", True),
-                "cap_per_page": self.app.config.get("daily_cap_per_page", 1),
                 "stop_on_checkpoint": self.app.config.get("stop_on_checkpoint", True),
                 "backoff_minutes": self.app.config.get("rate_limit_backoff_minutes", 15),
                 "manual_files": {}, "rng": random.Random()}
@@ -139,8 +137,7 @@ class UploadView(BaseView):
         else:
             self.resume_label.configure(text="")
         clear_frame(self.table_wrap)
-        cap = self.app.config.get("daily_cap_per_page", 1)
-        heading(self.table_wrap, f"Video chờ upload (trần {cap} video/page/ngày)").pack(
+        heading(self.table_wrap, "Video chờ upload").pack(
             anchor="w", pady=(0, 8))
         if not model["pages"]:
             muted(self.table_wrap, "Chưa có page nào.").pack(anchor="w")
@@ -160,10 +157,8 @@ class UploadView(BaseView):
             by_page.setdefault(item["page_id"], item)
         skipped_by_page = {}
         for s in plan["skipped"]:
-            # Uu tien "cap" hon "dup": het tran ngay la ly do chan dang
-            if s["page_id"] not in skipped_by_page or s["reason"] == "cap":
-                skipped_by_page[s["page_id"]] = s["reason"]
-        self._render_table(model["pages"], by_page, skipped_by_page, cap)
+            skipped_by_page.setdefault(s["page_id"], s["reason"])
+        self._render_table(model["pages"], by_page, skipped_by_page)
 
     def _build_plan(self, pages):
         """Ke hoach upload de dien san caption/comment cho video tiep theo
@@ -184,22 +179,20 @@ class UploadView(BaseView):
             self._plan_error = str(e)
             self.app.log(f"Không lập được kế hoạch upload: {e}")
             return {"items": [], "skipped": [], "queue": [], "total": 0,
-                    "counts": {"dup": 0, "cap": 0}}
+                    "counts": {"dup": 0}}
 
-    def _row_status(self, page, item, skip_reason, cap):
+    def _row_status(self, page, item, skip_reason):
         """(text, mau) cho cot Trang thai cua 1 dong — ly do o nhap bi khoa
         (neu co) phai nhin thay ngay, khong doan mo."""
         if self._plan_error:
             return "Lỗi kế hoạch", COLORS["danger"]
         if item:
             return "Sẽ đăng", COLORS["success"]
-        if skip_reason == "cap":
-            return f"Đã đủ {cap} video hôm nay", COLORS["warning"]
         if skip_reason == "dup":
             return "Video này đã đăng rồi", COLORS["text_muted"]
         return "Không có video", COLORS["text_muted"]
 
-    def _render_table(self, pages, by_page, skipped_by_page, cap):
+    def _render_table(self, pages, by_page, skipped_by_page):
         """Bang sua duoc: Page | Video da edit | Da dang hom nay | Trang thai |
         Caption | Comment | Đổi. Chi page co video se dang moi sua duoc;
         dong khong dang duoc luon hien ly do o cot Trang thai."""
@@ -226,13 +219,13 @@ class UploadView(BaseView):
                          font=ctk.CTkFont(*FONTS["body"]),
                          text_color=COLORS["text"], width=90, anchor="w").grid(
                              row=0, column=1, padx=PAD_SMALL, pady=6, sticky="w")
-            ctk.CTkLabel(fr, text=f"{p['today']}/{cap}",
+            ctk.CTkLabel(fr, text=str(p["today"]),
                          font=ctk.CTkFont(*FONTS["body"]),
                          text_color=COLORS["text"], width=110, anchor="w").grid(
                              row=0, column=2, padx=PAD_SMALL, pady=6, sticky="w")
             item = by_page.get(p["id"])
             status_text, status_color = self._row_status(
-                p, item, skipped_by_page.get(p["id"]), cap)
+                p, item, skipped_by_page.get(p["id"]))
             ctk.CTkLabel(fr, text=status_text, font=ctk.CTkFont(*FONTS["body"]),
                          text_color=status_color, width=170, anchor="w").grid(
                              row=0, column=3, padx=PAD_SMALL, pady=6, sticky="w")

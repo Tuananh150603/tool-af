@@ -263,8 +263,6 @@ class App(ctk.CTk):
                     "comment_delay": self.config.get("upload", {}).get("comment_delay", 15),
                     "big_first": self.config.get("upload", {}).get("big_first", False),
                     "shuffle": True,
-                    "cap_enabled": self.config.get("daily_cap_enabled", True),
-                    "cap_per_page": self.config.get("daily_cap_per_page", 1),
                     "stop_on_checkpoint": self.config.get("stop_on_checkpoint", True),
                     "backoff_minutes": self.config.get("rate_limit_backoff_minutes", 15),
                     "manual_files": {}, "rng": ctx.rng}

@@ -139,9 +139,10 @@ def test_dong_video_da_dang_hien_ly_do_dup(tk_upload_view, fake_tool_root):
     assert r["cmt_entry"].cget("state") == "disabled"
 
 
-def test_dong_het_tran_ngay_hien_ly_do_cap(tk_upload_view):
-    """(b) Page da dang du 1 video hom nay (hash khac, khong phai dup) ->
-    dong hien 'Đã đủ 1 video hôm nay', o nhap bi khoa."""
+def test_dong_da_dang_hom_nay_van_dang_duoc(tk_upload_view):
+    """Bo gioi han video/ngay: page da dang 1 video hom nay (hash khac,
+    khong phai dup) thi video tiep theo van dang duoc -> 'Sẽ đăng', o nhap
+    mo."""
     app = tk_upload_view
     view = app.views["upload"]
     app.runlog.record_upload("run-old", "111111111111111",
@@ -153,10 +154,10 @@ def test_dong_het_tran_ngay_hien_ly_do_cap(tk_upload_view):
     app.update()
     rows = _rows_by_folder(view)
     r = rows["111111111111111_Mua_sắm_quanh_năm"]
-    assert r["video_path"] is None
-    assert r["status"] == "Đã đủ 1 video hôm nay"
-    assert r["cap_entry"].cget("state") == "disabled"
-    assert r["cmt_entry"].cget("state") == "disabled"
+    assert r["video_path"] is not None
+    assert r["status"] == "Sẽ đăng"
+    assert r["cap_entry"].cget("state") == "normal"
+    assert r["cmt_entry"].cget("state") == "normal"
 
 
 def test_dong_khong_co_video_hien_ly_do(tk_upload_view):

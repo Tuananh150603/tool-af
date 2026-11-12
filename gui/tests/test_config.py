@@ -14,8 +14,6 @@ def test_defaults_giu_dung_hanh_vi_goc(tmp_path):
 def test_defaults_an_toan_bat(tmp_path):
     cfg = Config(path=tmp_path / "gui_config.json")
     assert cfg.get("stop_on_checkpoint") is True
-    assert cfg.get("daily_cap_enabled") is True
-    assert cfg.get("daily_cap_per_page") == 1
     assert cfg.get("rate_limit_backoff_minutes") == 15
 
 
@@ -37,14 +35,14 @@ def test_save_load_roundtrip(tmp_path):
     cfg = Config(path=path)
     cfg.set("pool_root", r"E:\Pool moi\data\关注")
     cfg.set("user_token", "TESTTOKEN_" + "y" * 60)
-    cfg.set("daily_cap_per_page", 3)
+    cfg.set("rate_limit_backoff_minutes", 30)
     cfg.data["schedule"]["enabled"] = True
     cfg.data["schedule"]["time"] = "07:30"
     cfg.save()
     cfg2 = Config.load(tmp_path)
     assert cfg2.get("pool_root") == r"E:\Pool moi\data\关注"
     assert cfg2.get("user_token") == "TESTTOKEN_" + "y" * 60
-    assert cfg2.get("daily_cap_per_page") == 3
+    assert cfg2.get("rate_limit_backoff_minutes") == 30
     assert cfg2.data["schedule"]["enabled"] is True
     assert cfg2.data["schedule"]["time"] == "07:30"
     # gia tri khong doi van giu mac dinh

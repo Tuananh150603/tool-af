@@ -1,4 +1,4 @@
-"""Test adapters/upload_adapter.py — cap/ngay, chong trung, dung checkpoint/429."""
+"""Test adapters/upload_adapter.py — chong trung, dung checkpoint/429."""
 import random
 from pathlib import Path
 
@@ -84,7 +84,7 @@ def _resolver(tool_root):
 
 def _opts(**kw):
     o = {"gap": 0, "comment_delay": 0, "big_first": False, "shuffle": False,
-         "cap_enabled": False, "cap_per_page": 1, "stop_on_checkpoint": True,
+         "stop_on_checkpoint": True,
          "backoff_minutes": 15, "manual_files": {}, "rng": random.Random(0)}
     o.update(kw)
     return o
@@ -116,16 +116,17 @@ def test_chong_trung_khong_upload_lai(pages_with_token, monkeypatch, tmp_path):
     assert log.uploads_today("111111111111111") == 2  # khong tang
 
 
-def test_gioi_han_1_video_ngay(pages_with_token, monkeypatch, tmp_path):
+def test_khong_gioi_han_video_ngay(pages_with_token, monkeypatch, tmp_path):
+    """Bo gioi han video/ngay: page co 2 video thi dang ca 2 trong 1 dot."""
     fx, pages = pages_with_token
     _patch_upload(monkeypatch, fx["root"], "ok")
     log = RunLog(tmp_path / "gui_runlog.json")
     ctx = FakeCtx()
     s = upload_adapter.run_upload_pages(
-        fx["root"], pages, _opts(cap_enabled=True, cap_per_page=1),
-        log, "r1", ctx, _resolver(fx["root"]))
-    assert s["ok"] == 1 and s["skipped"] == 1
-    assert any("đủ 1 video hôm nay" in l for l in ctx.logs)
+        fx["root"], pages, _opts(), log, "r1", ctx, _resolver(fx["root"]))
+    assert s["ok"] == 2 and s["skipped"] == 0 and s["failed"] == 0
+    assert log.uploads_today("111111111111111") == 2
+    assert not any("video hôm nay" in l for l in ctx.logs)
 
 
 def test_dung_khi_checkpoint(pages_with_token, monkeypatch, tmp_path):
